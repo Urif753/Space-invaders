@@ -2,6 +2,7 @@ services:
   - type: web
     name: space-invaders-online
     runtime: node
+    rootDir: space-invaders-render
     plan: free
     buildCommand: npm install
     startCommand: npm start
