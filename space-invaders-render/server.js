@@ -1,0 +1,426 @@
+const path = require("node:path");
+const http = require("node:http");
+const crypto = require("node:crypto");
+const express = require("express");
+const { Pool } = require("pg");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const { Server } = require("socket.io");
+
+const port = Number(process.env.PORT || 10000);
+const jwtSecret = process.env.JWT_SECRET;
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!jwtSecret || !databaseUrl) {
+  throw new Error("Cal configurar JWT_SECRET i DATABASE_URL abans d'iniciar el servidor.");
+}
+
+const pool = new Pool({
+  connectionString: databaseUrl,
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined
+});
+
+const app = express();
+const httpServer = http.createServer(app);
+const io = new Server(httpServer);
+const queues = { aliens: [], pong: [] };
+const rooms = new Map();
+
+app.disable("x-powered-by");
+app.use(express.json({ limit: "10kb" }));
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "same-origin");
+  next();
+});
+
+function publicProfile(row) {
+  return {
+    username: row.username,
+    record: row.record,
+    monedes: row.monedes,
+    nauEquipada: row.nau_equipada,
+    nausComprades: row.naus_comprades,
+    pongDuelWins: row.pong_duel_wins,
+    pongColoresComprados: row.pong_colores_comprados,
+    pongColorEquipado: row.pong_color_equipado
+  };
+}
+
+async function getProfile(username) {
+  const result = await pool.query(
+    `SELECT username, record, monedes, nau_equipada, naus_comprades,
+            pong_duel_wins, pong_colores_comprados, pong_color_equipado
+       FROM players WHERE username = $1`,
+    [username]
+  );
+  return result.rows[0] || null;
+}
+
+function createToken(username) {
+  return jwt.sign({ username }, jwtSecret, { expiresIn: "30d" });
+}
+
+function requireAuth(req, res, next) {
+  const header = req.get("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  try {
+    req.player = jwt.verify(token, jwtSecret);
+    next();
+  } catch {
+    res.status(401).json({ error: "La sessio ha caducat. Torna a iniciar sessio." });
+  }
+}
+
+function validateUsername(value) {
+  return typeof value === "string" && /^[A-Z0-9_]{1,12}$/.test(value);
+}
+
+function validatePassword(value) {
+  return typeof value === "string" && value.length >= 8 && Buffer.byteLength(value, "utf8") <= 72;
+}
+
+function boundedInteger(value, fallback, max = 10000000) {
+  return Number.isInteger(value) && value >= 0 && value <= max ? value : fallback;
+}
+
+function validColors(value) {
+  const allowed = new Set(["#ffffff", "#ffd700", "#c0c0c0", "#0080ff", "#ff00ff", "#ff0000"]);
+  return Array.isArray(value) && value.length <= allowed.size &&
+    value.every((color) => typeof color === "string" && allowed.has(color));
+}
+
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+app.post("/api/register", async (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return res.status(400).json({ error: "Les dades del compte no son valides." });
+  }
+  const username = typeof body.username === "string" ? body.username.trim().toUpperCase() : "";
+  const { password } = body;
+  if (!validateUsername(username) || !validatePassword(password)) {
+    return res.status(400).json({ error: "El nom ha de tenir fins a 12 caracters i la contrasenya entre 8 i 72 bytes." });
+  }
+
+  try {
+    const passwordHash = await bcrypt.hash(password, 12);
+    const result = await pool.query(
+      `INSERT INTO players (username, password_hash)
+       VALUES ($1, $2)
+       ON CONFLICT (username) DO NOTHING
+       RETURNING username`,
+      [username, passwordHash]
+    );
+    if (!result.rowCount) return res.status(409).json({ error: "Aquest nom d'usuari ja existeix." });
+    return res.status(201).json({ ok: true });
+  } catch (error) {
+    console.error("No s'ha pogut crear el compte:", error);
+    return res.status(500).json({ error: "No s'ha pogut crear el compte." });
+  }
+});
+
+app.post("/api/login", async (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return res.status(400).json({ error: "Les dades d'inici de sessio no son valides." });
+  }
+  const username = typeof body.username === "string" ? body.username.trim().toUpperCase() : "";
+  const { password } = body;
+  if (!validateUsername(username) || !validatePassword(password)) {
+    return res.status(400).json({ error: "Nom d'usuari o contrasenya no valids." });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT username, password_hash, record, monedes, nau_equipada, naus_comprades,
+              pong_duel_wins, pong_colores_comprados, pong_color_equipado
+         FROM players WHERE username = $1`,
+      [username]
+    );
+    const player = result.rows[0];
+    if (!player || !(await bcrypt.compare(password, player.password_hash))) {
+      return res.status(401).json({ error: "Usuari o contrasenya incorrectes." });
+    }
+    return res.json({ token: createToken(username), ...publicProfile(player) });
+  } catch (error) {
+    console.error("No s'ha pogut iniciar sessio:", error);
+    return res.status(500).json({ error: "No s'ha pogut iniciar sessio." });
+  }
+});
+
+app.get("/api/me", requireAuth, async (req, res) => {
+  try {
+    const player = await getProfile(req.player.username);
+    if (!player) return res.status(401).json({ error: "El compte ja no existeix." });
+    return res.json({ user: publicProfile(player) });
+  } catch (error) {
+    console.error("No s'ha pogut carregar el perfil:", error);
+    return res.status(500).json({ error: "No s'ha pogut carregar el perfil." });
+  }
+});
+
+app.post("/api/save-user", requireAuth, async (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return res.status(400).json({ error: "Les dades del perfil no son valides." });
+  }
+  const nauEquipada = boundedInteger(body.nauEquipada, -1, 3);
+  const record = boundedInteger(body.record, -1);
+  const monedes = boundedInteger(body.monedes, -1);
+  const nausComprades = body.nausComprades;
+  const colors = body.pongColoresComprados;
+  const colorEquipat = body.pongColorEquipado;
+  if (nauEquipada < 0 || !Array.isArray(nausComprades) || nausComprades.length !== 4 ||
+      !nausComprades.every((value) => typeof value === "boolean") || !nausComprades[nauEquipada] ||
+      record < 0 || monedes < 0 || !validColors(colors) || !colors.includes(colorEquipat)) {
+    return res.status(400).json({ error: "Les dades del perfil no son valides." });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE players
+          SET record = $2, monedes = $3, nau_equipada = $4, naus_comprades = $5,
+              pong_colores_comprados = $6, pong_color_equipado = $7
+        WHERE username = $1
+        RETURNING username`,
+      [
+        req.player.username,
+        record,
+        monedes,
+        nauEquipada,
+        JSON.stringify(nausComprades),
+        JSON.stringify(colors),
+        colorEquipat
+      ]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: "No s'ha trobat el compte." });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("No s'han pogut desar les dades:", error);
+    return res.status(500).json({ error: "No s'han pogut desar les dades." });
+  }
+});
+
+app.get("/api/ranking", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT username, record FROM players ORDER BY record DESC, username ASC LIMIT 20"
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error("No s'ha pogut carregar el ranking:", error);
+    return res.status(500).json({ error: "No s'ha pogut carregar el ranking." });
+  }
+});
+
+app.get("/api/ranking-pong", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT username, pong_duel_wins AS \"duelsWins\" FROM players ORDER BY pong_duel_wins DESC, username ASC LIMIT 20"
+    );
+    return res.json(result.rows);
+  } catch (error) {
+    console.error("No s'ha pogut carregar el ranking de Pong:", error);
+    return res.status(500).json({ error: "No s'ha pogut carregar el ranking." });
+  }
+});
+
+app.use(express.static(path.join(__dirname, "public")));
+app.get("*", (_req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
+
+function removeFromQueue(socket) {
+  for (const queue of Object.values(queues)) {
+    const index = queue.indexOf(socket.id);
+    if (index !== -1) queue.splice(index, 1);
+  }
+}
+
+function queuePlayer(socket, game) {
+  removeFromQueue(socket);
+  if ([...rooms.values()].some((room) => room.players.includes(socket.id))) return;
+  const queue = queues[game];
+  const opponentIndex = queue.findIndex((id) => {
+    const candidate = io.sockets.sockets.get(id);
+    return candidate && candidate.data.username !== socket.data.username;
+  });
+  if (opponentIndex === -1) {
+    queue.push(socket.id);
+    return;
+  }
+
+  const opponentId = queue.splice(opponentIndex, 1)[0];
+  const opponent = io.sockets.sockets.get(opponentId);
+  if (!opponent) return queuePlayer(socket, game);
+
+  const roomId = crypto.randomUUID();
+  const room = {
+    id: roomId,
+    game,
+    players: [opponent.id, socket.id],
+    names: [opponent.data.username, socket.data.username],
+    paddles: { 1: 160, 2: 160 },
+    ball: { x: 300, y: 200, vx: Math.random() < 0.5 ? -5 : 5, vy: 3 },
+    points: { 1: 0, 2: 0 },
+    timer: null,
+    finished: false
+  };
+  rooms.set(roomId, room);
+  opponent.join(roomId);
+  socket.join(roomId);
+
+  if (game === "aliens") {
+    io.to(roomId).emit("duel_iniciat", {
+      roomId,
+      jugador1: room.names[0],
+      jugador2: room.names[1]
+    });
+  } else {
+    opponent.emit("pong_encontrado", { roomId, jugador: 1, oponente: room.names[1] });
+    socket.emit("pong_encontrado", { roomId, jugador: 2, oponente: room.names[0] });
+    room.timer = setInterval(() => updatePong(room), 30);
+  }
+}
+
+function finishRoom(room, event, payload) {
+  if (room.finished) return;
+  room.finished = true;
+  if (room.timer) clearInterval(room.timer);
+  io.to(room.id).emit(event, payload);
+  rooms.delete(room.id);
+  for (const id of room.players) {
+    const playerSocket = io.sockets.sockets.get(id);
+    if (playerSocket) playerSocket.leave(room.id);
+  }
+}
+
+function updatePong(room) {
+  if (room.finished) return;
+  const ball = room.ball;
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+  if (ball.y <= 4 || ball.y >= 396) ball.vy *= -1;
+
+  for (const [side, paddleX] of [[1, 18], [2, 582]]) {
+    const paddleY = room.paddles[side];
+    if ((side === 1 && ball.vx < 0 && ball.x <= paddleX + 4) ||
+        (side === 2 && ball.vx > 0 && ball.x >= paddleX - 4)) {
+      if (ball.y >= paddleY && ball.y <= paddleY + 80) {
+        ball.vx = -Math.sign(ball.vx) * Math.min(Math.abs(ball.vx) * 1.03, 9);
+        ball.vy = Math.max(-7, Math.min(7, (ball.y - (paddleY + 40)) / 7));
+      }
+    }
+  }
+
+  let scorer = null;
+  if (ball.x < 0) scorer = 2;
+  if (ball.x > 600) scorer = 1;
+  if (scorer) {
+    room.points[scorer] += 1;
+    ball.x = 300;
+    ball.y = 200;
+    ball.vx = scorer === 1 ? 5 : -5;
+    ball.vy = Math.random() * 4 - 2;
+    if (room.points[scorer] >= 5) {
+      const winner = room.names[scorer - 1];
+      finishRoom(room, "pong_fin", { ganador: winner });
+      pool.query("UPDATE players SET pong_duel_wins = pong_duel_wins + 1 WHERE username = $1", [winner])
+        .catch((error) => console.error("No s'ha pogut actualitzar el ranking de Pong:", error));
+      return;
+    }
+  }
+
+  io.to(room.id).emit("pong_estado", {
+    bola: { ...ball, width: 8, height: 8 },
+    puntos: { ...room.points },
+    pala1: { y: room.paddles[1] },
+    pala2: { y: room.paddles[2] }
+  });
+}
+
+io.use((socket, next) => {
+  try {
+    const claims = jwt.verify(socket.handshake.auth?.token || "", jwtSecret);
+    if (typeof claims.username !== "string") return next(new Error("Cal iniciar sessio."));
+    socket.data.username = claims.username;
+    return next();
+  } catch {
+    return next(new Error("Sessio no valida. Torna a iniciar sessio."));
+  }
+});
+
+io.on("connection", (socket) => {
+  socket.on("buscar_duel", () => queuePlayer(socket, "aliens"));
+  socket.on("buscar_pong", () => queuePlayer(socket, "pong"));
+  socket.on("cancelar_cerca", () => removeFromQueue(socket));
+  socket.on("cancelar_pong_search", () => removeFromQueue(socket));
+
+  socket.on("moviment_jugador", (data = {}) => {
+    if (!data || typeof data !== "object") return;
+    const room = rooms.get(data.roomId);
+    if (room?.game === "aliens" && room.players.includes(socket.id) &&
+        Number.isFinite(data.x) && data.x >= 0 && data.x <= 570) {
+      socket.to(room.id).emit("moviment_oponent", {
+        x: data.x,
+        color: typeof data.color === "string" && /^#[0-9a-f]{6}$/i.test(data.color) ? data.color : "#00ff00"
+      });
+    }
+  });
+
+  socket.on("onada_completada", (data = {}) => {
+    if (!data || typeof data !== "object") return;
+    const room = rooms.get(data.roomId);
+    if (room?.game === "aliens" && room.players.includes(socket.id)) {
+      const winner = data.username === socket.data.username
+        ? socket.data.username
+        : room.names.find((name) => name !== socket.data.username);
+      finishRoom(room, "fi_del_duel", { guanyador: winner });
+    }
+  });
+
+  socket.on("pong_movimiento", (data = {}) => {
+    if (!data || typeof data !== "object") return;
+    const room = rooms.get(data.roomId);
+    if (!room || room.game !== "pong") return;
+    const playerIndex = room.players.indexOf(socket.id);
+    if (playerIndex === -1 || !Number.isFinite(data.pala_y)) return;
+    room.paddles[playerIndex + 1] = Math.max(0, Math.min(320, data.pala_y));
+  });
+
+  socket.on("disconnect", () => {
+    removeFromQueue(socket);
+    for (const room of rooms.values()) {
+      const playerIndex = room.players.indexOf(socket.id);
+      if (playerIndex === -1) continue;
+      const winner = room.names[1 - playerIndex];
+      finishRoom(room, room.game === "pong" ? "pong_fin" : "fi_del_duel", {
+        ganador: winner,
+        guanyador: winner
+      });
+    }
+  });
+});
+
+async function start() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS players (
+      username VARCHAR(12) PRIMARY KEY,
+      password_hash TEXT NOT NULL,
+      record INTEGER NOT NULL DEFAULT 0,
+      monedes INTEGER NOT NULL DEFAULT 0,
+      nau_equipada INTEGER NOT NULL DEFAULT 0,
+      naus_comprades JSONB NOT NULL DEFAULT '[true, false, false, false]'::jsonb,
+      pong_duel_wins INTEGER NOT NULL DEFAULT 0,
+      pong_colores_comprados JSONB NOT NULL DEFAULT '["#ffffff"]'::jsonb,
+      pong_color_equipado TEXT NOT NULL DEFAULT '#ffffff'
+    )
+  `);
+  httpServer.listen(port, "0.0.0.0", () => {
+    console.log(`Servidor actiu al port ${port}`);
+  });
+}
+
+start().catch((error) => {
+  console.error("No s'ha pogut iniciar el servidor:", error);
+  process.exitCode = 1;
+});
