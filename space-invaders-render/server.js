@@ -254,13 +254,16 @@ function queuePlayer(socket, game) {
   if (!opponent) return queuePlayer(socket, game);
 
   const roomId = crypto.randomUUID();
+  const startAt = Date.now() + 5000;
   const room = {
     id: roomId,
     game,
     players: [opponent.id, socket.id],
     names: [opponent.data.username, socket.data.username],
     paddles: { 1: 160, 2: 160 },
-    ball: { x: 300, y: 200, vx: Math.random() < 0.5 ? -5 : 5, vy: 3 },
+    ball: { x: 300, y: 200, vx: 0, vy: 0 },
+    startAt,
+    started: false,
     points: { 1: 0, 2: 0 },
     timer: null,
     finished: false
@@ -273,11 +276,12 @@ function queuePlayer(socket, game) {
     io.to(roomId).emit("duel_iniciat", {
       roomId,
       jugador1: room.names[0],
-      jugador2: room.names[1]
+      jugador2: room.names[1],
+      startAt
     });
   } else {
-    opponent.emit("pong_encontrado", { roomId, jugador: 1, oponente: room.names[1] });
-    socket.emit("pong_encontrado", { roomId, jugador: 2, oponente: room.names[0] });
+    opponent.emit("pong_encontrado", { roomId, jugador: 1, oponente: room.names[1], startAt });
+    socket.emit("pong_encontrado", { roomId, jugador: 2, oponente: room.names[0], startAt });
     room.timer = setInterval(() => updatePong(room), 30);
   }
 }
@@ -297,6 +301,12 @@ function finishRoom(room, event, payload) {
 function updatePong(room) {
   if (room.finished) return;
   const ball = room.ball;
+  if (Date.now() < room.startAt) return;
+  if (!room.started) {
+    room.started = true;
+    ball.vx = Math.random() < 0.5 ? -5 : 5;
+    ball.vy = 3;
+  }
   ball.x += ball.vx;
   ball.y += ball.vy;
   if (ball.y <= 4 || ball.y >= 396) ball.vy *= -1;
