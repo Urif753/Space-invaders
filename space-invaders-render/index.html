@@ -1,0 +1,343 @@
+
+
+<!DOCTYPE html><html lang="ca"><head>    <meta charset="UTF-8">    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Space Invaders - Edició Final Absoluta Sincronitzada</title>    <script src="/socket.io/socket.io.js"></script>    <style>        body {            background-color: #050505; color: #fff; font-family: 'Courier New', Courier, monospace;            display: flex; flex-direction: column; align-items: center; justify-content: center;            min-height: 100vh; margin: 0; user-select: none;        }        .marcadors {            display: flex; gap: 40px; font-size: 18px; font-weight: bold; letter-spacing: 1px; margin-bottom: 10px; justify-content: space-between;        }        #menu-principal {            display: flex; gap: 20px; background: #111; padding: 20px; border: 2px solid #333; border-radius: 8px; max-width: 880px;        }        .columna-menu {            width: 270px; background: #1a1a1a; padding: 15px; border-radius: 6px; border: 1px solid #444;        }        .btn-accio {            background: #00ff00; color: #000; font-weight: bold; border: none; padding: 10px; width: 100%; cursor: pointer; font-family: monospace; margin-top: 10px; transition: background 0.1s;        }        .btn-accio:hover { background: #33ff33; }        .btn-accio:disabled { background: #444 !important; color: #888 !important; cursor: not-allowed; }        .grup-login { margin-bottom: 12px; text-align: left; }        .grup-login label { font-size: 11px; color: #aaa; display: block; margin-bottom: 4px; }        .input-login { background: #000; color: #00ff00; border: 1px solid #444; padding: 6px; width: 95%; font-family: monospace; }        .input-login:focus { border-color: #00ff00; outline: none; }        #pantalla-retro {            display: none; position: relative; border: 4px solid #333; box-shadow: 0 0 30px rgba(0, 255, 0, 0.15); border-radius: 4px;        }        #pantalla-retro::after {            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));            background-size: 100% 4px, 6px 100%; z-index: 10; pointer-events: none;        }        canvas { background: #020202; display: block; }
+#aviso-duel {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font-family: 'Courier New', Courier, monospace;
+    pointer-events: none;
+}
+#aviso-duel-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: min(440px, calc(100vw - 48px));
+    padding: 28px 20px;
+    background: #080808;
+    border: 3px solid #a855f7;
+    box-shadow: 0 0 32px rgba(168, 85, 247, 0.45);
+}
+#aviso-duel strong {
+    color: #ffcc00;
+    font-size: 24px;
+}
+#aviso-duel .comptador-duel {
+    margin-top: 12px;
+    color: #00ff00;
+    font-size: 72px;
+    line-height: 1;
+    text-shadow: 0 0 16px #00ff00;
+}
+.tabla-ranking { width: 100%; border-collapse: collapse; font-size: 13px; }        .tabla-ranking th { border-bottom: 1px solid #555; text-align: left; padding-bottom: 5px; color: #888; }        .tabla-ranking td { padding: 5px 0; border-bottom: 1px dotted #333; }        .item-botiga { border-bottom: 1px dashed #444; padding: 10px 0; font-size: 12px; }        .scrollable-shop { max-height: 520px; overflow-y: auto; padding-right: 8px; }        .scrollable-shop::-webkit-scrollbar { width: 8px; }        .scrollable-shop::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }    </style>
+        .admin-panel { margin-top: 16px; padding: 10px; border: 1px solid #a855f7; background: #100b18; text-align: left; }
+        .admin-panel select { width: 100%; margin: 6px 0; padding: 7px; background: #000; color: #fff; border: 1px solid #555; font-family: monospace; }
+        #admin-online-users { max-height: 100px; overflow-y: auto; color: #00ffcc; font-size: 12px; overflow-wrap: anywhere; }
+        #admin-status { min-height: 1em; color: #ffcc00; font-size: 12px; }    </style>
+<script>
+window.peticioAuth = async function (tipus) {
+    const username = document.getElementById("auth-username").value.trim().toUpperCase();
+    const password = document.getElementById("auth-password").value;
+    if (!username || !password) return alert("Emplena tots els camps!");
+    const buttons = document.querySelectorAll("#zona-auth button");
+    buttons.forEach((button) => button.disabled = true);
+    try {
+const response = await fetch("/api/" + tipus, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+});
+const data = await response.json();
+if (!response.ok) throw new Error(data.error || "No s'ha pogut completar la peticio.");
+if (tipus === "register") {
+    alert("Compte creat! Ara pots iniciar sessio.");
+} else {
+    localStorage.setItem("space_invaders_token", data.token);
+    window.usuariSessio = data.username;
+    window.record = data.record;
+    window.monedes = data.monedes;
+    window.nauEquipada = data.nauEquipada;
+    window.nausComprades = data.nausComprades;
+    window.pongDuelWins = data.pongDuelWins || 0;
+    window.pongColoresComprados = data.pongColoresComprados || ["#ffffff"];
+    window.pongColorEquipado = data.pongColorEquipado || "#ffffff";
+    if (typeof window.actualitzarInterficieMenu === "function") {
+        window.actualitzarInterficieMenu();
+    } else {
+        document.getElementById("zona-auth").style.display = "none";
+        document.getElementById("zona-usuari-actiu").style.display = "block";
+        document.getElementById("zona-selector-joc").style.display = "block";
+        document.getElementById("nom-perfil").textContent = data.username;
+        document.getElementById("menu-record").textContent = String(data.record || 0).padStart(4, "0");
+        document.getElementById("menu-monedes").textContent = data.monedes || 0;
+    }
+    if (window.socket) {
+        window.socket.auth = { token: data.token };
+        if (!window.socket.connected) window.socket.connect();
+    }
+}
+    } catch (error) {
+alert(error.message);
+    } finally {
+buttons.forEach((button) => button.disabled = false);
+    }
+};
+
+window.seleccionarJoc = function (joc) {
+    if (typeof window.originalSeleccionarJoc === "function") {
+window.originalSeleccionarJoc(joc);
+return;
+    }
+    document.getElementById("zona-selector-joc").style.display = "none";
+    document.getElementById("zona-modes-aliens").style.display = joc === "aliens" ? "block" : "none";
+    document.getElementById("zona-modes-pong").style.display = joc === "pong" ? "block" : "none";
+    document.getElementById("tienda-aliens").style.display = joc === "aliens" ? "block" : "none";
+    document.getElementById("tienda-pong").style.display = joc === "pong" ? "block" : "none";
+};
+
+window.volverAlSelectorJoc = function () {
+    document.getElementById("zona-modes-aliens").style.display = "none";
+    document.getElementById("zona-modes-pong").style.display = "none";
+    document.getElementById("tienda-aliens").style.display = "none";
+    document.getElementById("tienda-pong").style.display = "none";
+    document.getElementById("zona-selector-joc").style.display = "block";
+};
+
+window.tancarSessio = function () {
+    if (window.socket) window.socket.disconnect();
+    localStorage.removeItem("space_invaders_token");
+    document.getElementById("zona-usuari-actiu").style.display = "none";
+    document.getElementById("zona-auth").style.display = "block";
+};
+
+window.buscarDuelSocket = function () {
+    if (typeof window.originalBuscarDuelSocket === "function") {
+window.originalBuscarDuelSocket();
+    } else if (typeof window.comencarPartida === "function") {
+window.comencarPartida(true);
+    }
+};
+
+window.buscarDuelPong = function () {
+    if (typeof window.originalBuscarDuelPong === "function") {
+window.originalBuscarDuelPong();
+    }
+};
+
+let temporitzadorMissatge = null;
+window.mostrarMissatgePantalla = function (titol, detall = "", segons = 5, momentFinalitzacio = Date.now() + segons * 1000, enFinalitzar = null) {
+    const avs = document.getElementById("aviso-duel");
+    if (!avs) return;
+    clearTimeout(temporitzadorMissatge);
+    avs.querySelector("strong").textContent = titol;
+    document.getElementById("aviso-duel-oponent").textContent = detall;
+    const instruccio = avs.querySelectorAll("span")[1];
+    if (instruccio) instruccio.textContent = /PARTIDA TROBADA|COMENÇA/i.test(titol) ? "LA PARTIDA COMENÇA EN:" : "";
+    avs.style.display = "flex";
+    const actualitzarComptador = () => {
+        const restant = Math.max(0, Math.ceil((momentFinalitzacio - Date.now()) / 1000));
+        document.getElementById("comptador-duel").textContent = String(restant);
+        if (restant === 0 || Date.now() >= momentFinalitzacio) {
+            avs.style.display = "none";
+            temporitzadorMissatge = null;
+            if (enFinalitzar) enFinalitzar();
+            return;
+        }
+        temporitzadorMissatge = setTimeout(actualitzarComptador, Math.min(100, momentFinalitzacio - Date.now()));
+    };
+    actualitzarComptador();
+};
+
+window.alert = function (missatge) {
+    window.mostrarMissatgePantalla("AVÍS DEL JOC", String(missatge), 5);
+};
+</script>
+</head><body>    <div id="menu-principal">        <div class="columna-menu" style="text-align: center;">            <h2 style="color: #00ff00; margin-top: 0; font-size: 20px;">SPACE INVADERS</h2>                       <div id="zona-auth">                <div class="grup-login"><label>USUARI:</label><input type="text" id="auth-username" class="input-login" maxlength="12"></div>                <div class="grup-login"><label>CONTRASENYA:</label><input type="password" id="auth-password" class="input-login"></div>                <button class="btn-accio" onclick="peticioAuth('login')">INICIAR SESSIÓ</button>                <button class="btn-accio" style="background:#3b82f6; color:#fff;" onclick="peticioAuth('register')">CREAR COMPTE</button>            </div>            <div id="zona-usuari-actiu" style="display: none;">                <p style="color:#00ffcc; font-weight:bold; margin-bottom: 15px;">Hola, <span id="nom-perfil">...</span>!</p>                <p>El teu Rècord: <span id="menu-record" style="color: #ff3366;">0000</span></p>                <p style="font-size: 20px;">Monedes: <span id="menu-monedes" style="color: #ffcc00;">0</span> </p>                <p style="font-size: 12px; color: #0f0;" id="estado-conexion"> ONLINE</p>                               <div id="zona-selector-joc" style="display: none;">                    <p style="color: #ffaa00; font-weight: bold; margin-bottom: 10px;">TRIA EL JOC:</p>                    <button class="btn-accio" style="background: #00ff00; color: #000; margin-bottom: 8px;" onclick="seleccionarJoc('aliens')">SPACE INVADERS</button>                    <button class="btn-accio" style="background: #ff00ff; color: #fff; margin-bottom: 8px;" onclick="seleccionarJoc('pong')">PONG 1v1</button>                </div>                               <div id="zona-modes-aliens" style="display: none;">                    <button class="btn-accio" id="btn-jugar-principal" style="font-size: 18px; margin-top: 15px;" onclick="comencarPartida(false)">JUGAR SOL</button>                    <button class="btn-accio" id="btn-duel" style="background:#a855f7; color:#fff; font-size: 16px; margin-top: 10px;" onclick="buscarDuelSocket()">DUEL ONLINE</button>                    <button class="btn-accio" style="background: #888; color: #fff; font-size: 12px; margin-top: 8px;" onclick="volverAlSelectorJoc()">TORNAR</button>                </div>                               <div id="zona-modes-pong" style="display: none;">                    <button class="btn-accio" style="background: #ff00ff; color: #fff; font-size: 16px; margin-top: 15px;" onclick="buscarDuelPong()">BUSCAR OPONENT PONG</button>                    <button class="btn-accio" style="background: #888; color: #fff; font-size: 12px; margin-top: 8px;" onclick="volverAlSelectorJoc()">TORNAR</button>                </div>                               <button class="btn-accio" style="background:#ef4444; color:#fff; font-size:11px; margin-top:20px; padding:5px;" onclick="tancarSessio()">TANCAR SESSIO</button>            </div>        </div>        <div class="columna-menu">            <div class="scrollable-shop">                <div id="tienda-aliens" style="display: none;">                    <h3 style="color: #ffcc00; margin-top: 0; text-align: center;"> BOTIGA DE NAUS</h3>                    <div class="item-botiga"><b>Nau Clàssica</b> (Equipada)<br><span style="color:#aaa;">Nau original de 1978. Vides: 3</span><button class="btn-accio" id="btn-nau0" style="background:#666;" onclick="equiparNau(0)">EQUIPAR</button></div>                    <div class="item-botiga"><b>Nau VELOX</b> <span style="color:#00ffcc;">[Moviment +35%]</span><br> Preu: 30 <br><span style="color:#aaa;">Es mou més ràpid, mateix tret. Vides: 3</span><button class="btn-accio" id="btn-nau1" disabled onclick="comprarOEquipar(1, 30)">COMPRAR</button></div>                    <div class="item-botiga"><b>Nau TITAN</b> <span style="color:#ff3366;">[5 Vides]</span><br> Preu: 60 <br><span style="color:#aaa;">Més resistent, moviment clàssic. Vides: 5</span><button class="btn-accio" id="btn-nau2" disabled onclick="comprarOEquipar(2, 60)">COMPRAR</button></div>                    <div class="item-botiga"><b>Nau TELEDIRIGIDA</b> <span style="color:#ff69b4;">[Trets Guiats]</span><br> Preu: 90 <br><span style="color:#aaa;">Projectils teledirigits, moviment clàssic. Vides: 3</span><button class="btn-accio" id="btn-nau3" disabled onclick="comprarOEquipar(3, 90)">COMPRAR</button></div>                </div>                <div id="tienda-pong" style="display: none;">                    <h3 style="color: #ff00ff; margin-top: 0; text-align: center;"> BOTIGA DE COLORS PONG</h3>                    <div class="item-botiga"><b>Blanc</b> (Equipat)<br><span style="color:#aaa;">Color per defecte de la pala</span><button class="btn-accio" id="btn-color-fff" style="background:#666;" onclick="equiparColorPong('#ffffff')">EQUIPAR</button></div>                    <div class="item-botiga"><b>Or</b> <span style="color:#ffcc00;">[Premium]</span><br> Preu: 25 <br><span style="color:#aaa;">Color exclusiu dorat</span><button class="btn-accio" id="btn-color-ffd700" disabled onclick="comprarColorPong('#ffd700', 25)">COMPRAR</button></div>                    <div class="item-botiga"><b>Platejat</b> <span style="color:#c0c0c0;">[Premium]</span><br> Preu: 20 <br><span style="color:#aaa;">Color exclusiu platejat</span><button class="btn-accio" id="btn-color-c0c0c0" disabled onclick="comprarColorPong('#c0c0c0', 20)">COMPRAR</button></div>                    <div class="item-botiga"><b>Blau Neó</b> <span style="color:#00ff00;">[Neon]</span><br> Preu: 30 <br><span style="color:#aaa;">Color neó bleu fluo</span><button class="btn-accio" id="btn-color-0080ff" disabled onclick="comprarColorPong('#0080ff', 30)">COMPRAR</button></div>                    <div class="item-botiga"><b>Púrpura</b> <span style="color:#ff00ff;">[Neon]</span><br> Preu: 30 <br><span style="color:#aaa;">Color neó magenta/purple</span><button class="btn-accio" id="btn-color-ff00ff" disabled onclick="comprarColorPong('#ff00ff', 30)">COMPRAR</button></div>                    <div class="item-botiga"><b>Vermell Fluo</b> <span style="color:#ff0000;">[Neon]</span><br> Preu: 25 <br><span style="color:#aaa;">Color neó vermell</span><button class="btn-accio" id="btn-color-ff0000" disabled onclick="comprarColorPong('#ff0000', 25)">COMPRAR</button></div>                </div>            </div>        </div>        <div class="columna-menu">            <h3 id="titulo-ranking" style="color: #33ccff; margin-top: 0; text-align: center;"> TOP 10 GENERAL</h3>            <table class="tabla-ranking">                <thead><tr><th width="15%">Pos</th><th width="50%">Jugador</th><th id="th-ranking" width="35%">Punts</th></tr></thead>                <tbody id="cos-classificacio"><tr><td colspan="3" style="text-align:center; color:#ffaa00; font-size:11px;">INICIA SESSIÓ PER CARREGAR EL TOP 10.</td></tr></tbody>            </table>        </div>    </div>    <div id="pantalla-retro">        <div class="marcadors" style="padding: 10px; background: #000;">            <div>SCORE: <span id="punts" style="color: #00ff00;">0000</span></div>            <div id="marcador-duel" style="display:none; color: #a855f7; font-size: 14px; text-align: center;">                CARRERA 1v1!<br>PRIMER EN MATAR TOTS ELS ALIENS GUANYA            </div>            <div id="marcador-pong" style="display:none; color: #ff00ff; font-size: 14px; text-align: center;">                <span id="punts-pong-j1">0</span> vs <span id="punts-pong-j2">0</span>            </div>            <div><span id="joc-monedes" style="color: #ffcc00;">0</span>  | VIDES: <span id="joc-vides" style="color: #ff3366;">3</span></div>        </div>        <canvas id="invadersCanvas" width="600" height="440" style="display: none;"></canvas>        <canvas id="pongCanvas" width="600" height="400" style="display: none;"></canvas>
+<div id="aviso-duel">
+    <div id="aviso-duel-panel">
+        <strong>PARTIDA TROBADA!</strong>
+        <span id="aviso-duel-oponent"></span>
+        <span>EL PRIMER EN NETEJAR L'ONADA GUANYA!</span>
+        <span id="comptador-duel" class="comptador-duel">5</span>
+    </div>
+</div>    </div>    <script>        const MEU_PC_SERVIDOR_URL = "";               // Connexió per WebSockets (Temps real)
+        const socket = io({ autoConnect: false });        const canvas = document.getElementById("invadersCanvas");        const ctx = canvas.getContext("2d");        let audioCtx = null;        function ferSo(frequencia, tipus, durada, volum = 0.1) {            try {                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();                if (audioCtx.state === 'suspended') audioCtx.resume();                const osc = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();                osc.type = tipus; osc.frequency.setValueAtTime(frequencia, audioCtx.currentTime);                gainNode.gain.setValueAtTime(volum, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + durada);                osc.connect(gainNode); gainNode.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + durada);            } catch(e) {}        }               function pararMusica() {            try {                if (audioCtx && audioCtx.state === 'running') {                    audioCtx.suspend();                }            } catch(e) {}        }        let tonsRitme = [170, 150, 130, 110]; let indexRitme = 0; let tempsUltimPas = 0; let intervalPasEnemic = 500;        let usuariSessio = ""; let puntuacio = 0; let record = 0; let monedes = 0; let nauEquipada = 0; let nausComprades = [true, false, false, false];               // MODO OFFLINE
+        let modoOffline = false;        let servidorDisponible = false;               function cargarDatosLocal() {            record = parseInt(localStorage.getItem('record_local')) || 0;            monedes = parseInt(localStorage.getItem('monedes_local')) || 0;            nauEquipada = parseInt(localStorage.getItem('nauEquipada_local')) || 0;            nausComprades = JSON.parse(localStorage.getItem('nausComprades_local')) || [true, false, false, false];        }               function guardarDatosLocal() {            localStorage.setItem('record_local', record);            localStorage.setItem('monedes_local', monedes);            localStorage.setItem('nauEquipada_local', nauEquipada);            localStorage.setItem('nausComprades_local', JSON.stringify(nausComprades));        }               async function verificarConexion() {            try {                const response = await fetch(`${MEU_PC_SERVIDOR_URL}/api/ranking`, {                    method: 'GET',                    headers: {  },                    timeout: 3000                });                servidorDisponible = response.ok;                modoOffline = !servidorDisponible;            } catch (e) {                servidorDisponible = false;                modoOffline = true;            }            actualitzarModoUI();        }               function actualitzarModoUI() {            const elemento = document.getElementById('estado-conexion');            if (modoOffline) {                if (elemento) elemento.innerText = ' MODO OFFLINE';                document.getElementById('btn-duel').disabled = false;                document.getElementById('btn-duel').style.opacity = '1';                document.getElementById('btn-duel').innerText = ' DUEL OFFLINE';                // Ocultar opciones de Pong
+                        const selectorDiv = document.getElementById('zona-selector-joc');                if (selectorDiv && selectorDiv.style.display !== 'none') {                    const pongBtn = Array.from(selectorDiv.querySelectorAll('button')).find(b => b.textContent.includes('PONG'));                    if (pongBtn) pongBtn.style.display = 'none';                }            } else {                if (elemento) elemento.innerText = ' ONLINE';                document.getElementById('btn-duel').disabled = false;                document.getElementById('btn-duel').style.opacity = '1';                document.getElementById('btn-duel').innerText = ' DUEL ONLINE';                const selectorDiv = document.getElementById('zona-selector-joc');                if (selectorDiv && selectorDiv.style.display !== 'none') {                    const pongBtn = Array.from(selectorDiv.querySelectorAll('button')).find(b => b.textContent.includes('PONG'));                    if (pongBtn) pongBtn.style.display = 'block';                }            }        }               // Cargar datos locales al iniciar
+                cargarDatosLocal();        verificarConexion();        setInterval(verificarConexion, 10000); // Verificar cada 10 segundos
+                // DADES DEL DUEL ONLINE
+                let enDuel = false;        let duelRoomId = "";        let emitInterval = null;        let oponentEnPantalla = { actiu: false, x: 0, color: "#fff" }; // El "fantasma" de l'altre jugador
+                let enDuelOffline = false;        let duelOfflineHost = false;        let jugador2 = { x: 285, y: 400, width: 30, height: 16, speed: 4, vides: 3, color: "#ff00ff", name: "RIVAL LOCAL" };        let keys2 = { left: false, right: false, fire: false };        let balesJugador2 = [];        let puntosJugador2 = 0;        let ultimoDuelOfflineGuanyador = "";                        socket.on('duel_iniciat', (data) => {            duelRoomId = data.roomId;            const oponentNom = (data.jugador1 === usuariSessio) ? data.jugador2 : data.jugador1;            document.getElementById("btn-duel").innerText = " DUEL ONLINE";            document.getElementById("btn-duel").style.background = "#a855f7";                            const momentInici = Number(data.startAt || (Math.ceil((Date.now() + 100) / 5000) * 5000));            comencarPartida(true, oponentNom, momentInici);        });        socket.on('moviment_oponent', (data) => {            if (enDuel) {                oponentEnPantalla.actiu = true;                oponentEnPantalla.x = data.x;                oponentEnPantalla.color = data.color;            }        });        socket.on('fi_del_duel', (data) => {            if (enDuel) {                enDuel = false; // Bloquegem mes enviaments
+                                cancelAnimationFrame(idAnimacio);                clearInterval(emitInterval);                const hasGuanyat = data.guanyador === usuariSessio;                mostrarMissatgePantalla(hasGuanyat ? "HAS GUANYAT LA CARRERA!" : "HAS PERDUT...", hasGuanyat ? "Has netejat la invasió abans que el teu oponent!" : `${data.guanyador} ha matat tots els aliens abans que tu.`, 5);                setTimeout(finalitzarPartidaUI, 5000);            }        });        function actualitzarInterficieMenu() {            if(!usuariSessio) {                document.getElementById("zona-auth").style.display = "block";                document.getElementById("zona-usuari-actiu").style.display = "none";                for(let i=0; i<=3; i++) document.getElementById(`btn-nau${i}`).disabled = true;                return;            }            document.getElementById("zona-auth").style.display = "none";            document.getElementById("zona-usuari-actiu").style.display = "block";            document.getElementById("zona-selector-joc").style.display = "block";            document.getElementById("zona-modes-aliens").style.display = "none";            document.getElementById("zona-modes-pong").style.display = "none";            document.getElementById("tienda-aliens").style.display = "none";            document.getElementById("tienda-pong").style.display = "none";            document.getElementById("nom-perfil").innerText = usuariSessio;            document.getElementById("menu-record").innerText = String(record).padStart(4, '0');            document.getElementById("menu-monedes").innerText = monedes;            for(let i=0; i<=3; i++) {                let btn = document.getElementById(`btn-nau${i}`); btn.disabled = false;                if(i === nauEquipada) { btn.innerText = "EQUIPADA"; btn.style.background = "#666"; btn.style.color = "#aaa"; btn.disabled = true; }                else if(nausComprades[i]) { btn.innerText = "EQUIPAR"; btn.style.background = "#3b82f6"; btn.style.color = "white"; }                else { btn.innerText = "COMPRAR"; btn.style.background = "#00ff00"; btn.style.color = "#000"; }            }            // Actualitzar colors Pong
+                    const colorsDisponibles = ['fff', 'ffd700', 'c0c0c0', '0080ff', 'ff00ff', 'ff0000'];            colorsDisponibles.forEach(colorHex => {                let btn = document.getElementById(`btn-color-${colorHex}`);                if (btn) {                    btn.disabled = false;                    const colorFull = `#${colorHex}`;                    if(colorFull === pongColorEquipado) {                        btn.innerText = "EQUIPAT";                        btn.style.background = "#666";                        btn.style.color = "#aaa";                        btn.disabled = true;                    }                    else if(pongColoresComprados.includes(colorFull)) {                        btn.innerText = "EQUIPAR";                        btn.style.background = "#3b82f6";                        btn.style.color = "white";                    }                    else {                        btn.innerText = "COMPRAR";                        btn.style.background = "#00ff00";                        btn.style.color = "#000";                    }                }            });        }        function peticioAuth(tipus) {            const username = document.getElementById("auth-username").value.trim().toUpperCase();            const password = document.getElementById("auth-password").value;            if(!username || !password) return alert("Emplena tots els camps!");                       // Si estamos en modo offline, solo permitir con datos locales
+                    if (modoOffline) {                if (tipus === 'login') {                    if (localStorage.getItem('user_' + username) && localStorage.getItem('user_' + username) === password) {                        usuariSessio = username;                        cargarDatosLocal();                        actualitzarInterficieMenu();                        carregarRanquingGlobal();                    } else {                        alert("Usuario o contraseña incorrectos (Modo Offline)");                    }                } else {                    localStorage.setItem('user_' + username, password);                    alert("Cuenta creada localmente");                }            } else {                // Modo online normal
+                        fetch(`${MEU_PC_SERVIDOR_URL}/api/${tipus}`, {                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('space_invaders_token')}` },                    body: JSON.stringify({ username, password })                }).then(res => res.json()).then(data => {                    if(data.error) return alert(data.error);                    if(tipus === 'login') {                        localStorage.setItem('space_invaders_token', data.token); socket.auth = { token: data.token }; if (!socket.connected) socket.connect();                        usuariSessio = username; record = data.record; monedes = data.monedes; nauEquipada = data.nauEquipada; nausComprades = data.nausComprades;                        pongDuelWins = data.pongDuelWins || 0; pongColoresComprados = data.pongColoresComprados || ['#ffffff']; pongColorEquipado = data.pongColorEquipado || '#ffffff';                        guardarDatosLocal(); // Guardar también en local
+                                actualitzarInterficieMenu(); carregarRanquingGlobal();                    }                    else alert("Compte creat!");                }).catch(() => {                    // Si falla la conexión, pasar a offline
+                            modoOffline = true;                    actualitzarModoUI();                    alert("Servidor no disponible. Entrando en modo offline.");                    peticioAuth(tipus);                });            }        }        function tancarSessio() { socket.disconnect(); localStorage.removeItem("space_invaders_token");            usuariSessio = "";            guardarDatosLocal(); // Guardar cambios locales antes de cerrar sesión            
+        record = 0; monedes = 0; nauEquipada = 0; nausComprades = [true, false, false, false];            pongDuelWins = 0; pongColoresComprados = ['#ffffff']; pongColorEquipado = '#ffffff';            socket.emit('cancelar_cerca');            document.getElementById("auth-username").value = ""; document.getElementById("auth-password").value = "";            document.getElementById("btn-duel").innerText = " DUEL ONLINE";            actualitzarInterficieMenu(); document.getElementById("cos-classificacio").innerHTML = `<tr><td colspan="3" style="text-align:center; color:#ffaa00; font-size:11px;">INICIA SESSIÓ PER VEURE EL RÀNQUING.</td></tr>`;        }        function comprarOEquipar(id, preu) {            if(nausComprades[id]) { nauEquipada = id; desarDadesUsuariAlServidor(); }            else { if(monedes >= preu) { monedes -= preu; nausComprades[id] = true; nauEquipada = id; desarDadesUsuariAlServidor(); alert("Nau equipada!"); } else { alert("Falten monedes!"); } }        }        function equiparNau(id) { if(nausComprades[id]) { nauEquipada = id; desarDadesUsuariAlServidor(); } }        function comprarColorPong(color, preu) {            if(pongColoresComprados.includes(color)) { pongColorEquipado = color; desarDadesUsuariAlServidor(); }            else {                if(monedes >= preu) {                    monedes -= preu;                    pongColoresComprados.push(color);                    pongColorEquipado = color;                    desarDadesUsuariAlServidor();                    alert("Color equipat!");                } else { alert("Falten monedes!"); }            }        }        function equiparColorPong(color) {            if(pongColoresComprados.includes(color)) {                pongColorEquipado = color;                desarDadesUsuariAlServidor();            }        }        function desarDadesUsuariAlServidor() {            guardarDatosLocal(); // Siempre guardar localmente
+                    actualitzarInterficieMenu();                       if (!modoOffline && usuariSessio) {                fetch(`${MEU_PC_SERVIDOR_URL}/api/save-user`, {                    method: 'POST',                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('space_invaders_token')}` },                    body: JSON.stringify({                        username: usuariSessio, record, monedes, nauEquipada, nausComprades,                        pongDuelWins, pongColoresComprados, pongColorEquipado                    })                }).catch(() => {});            }        }        function buscarDuelSocket() {            if(!usuariSessio) { alert("Necessites iniciar sessió abans."); return; }            const btn = document.getElementById("btn-duel");            if (modoOffline) {                if (btn.innerText.includes("BUSCANT")) {                    btn.innerText = " DUEL OFFLINE"; btn.style.background = "#a855f7";                    return;                }                btn.innerText = " PREPARANT DUEL LOCAL..."; btn.style.background = "#d97706";                comencarDuelOffline();                return;            }            if (btn.innerText.includes("BUSCANT")) {                socket.emit('cancelar_cerca');                btn.innerText = " DUEL ONLINE"; btn.style.background = "#a855f7"; return;            }            btn.innerText = " BUSCANT OPONENT..."; btn.style.background = "#d97706";            socket.emit('buscar_duel', usuariSessio);                            }        function comencarDuelOffline() {            duelRoomId = 'LOCAL';            enDuel = true;            enDuelOffline = true;            duelOfflineHost = true;            jugador2 = { x: 100, y: 400, width: 30, height: 16, speed: 4, vides: 3, color: "#ff00ff", name: "RIVAL LOCAL" };            keys2 = { left: false, right: false, fire: false };            balesJugador2 = [];            puntosJugador2 = 0;            ultimoDuelOfflineGuanyador = "";            player.x = canvas.width / 2 - 15;            jugador2.y = player.y;            jugador2.vides = 3;            comencarPartida(true, "RIVAL LOCAL", Date.now() + 5000);        }        function seleccionarJoc(joc) {            if (modoOffline && joc === 'pong') {                alert("Pong no disponible en modo offline");                return;            }            document.getElementById("zona-selector-joc").style.display = "none";            if (joc === 'aliens') {                document.getElementById("zona-modes-aliens").style.display = "block";                document.getElementById("tienda-aliens").style.display = "block";                document.getElementById("tienda-pong").style.display = "none";            } else if (joc === 'pong') {                document.getElementById("zona-modes-pong").style.display = "block";                document.getElementById("tienda-aliens").style.display = "none";                document.getElementById("tienda-pong").style.display = "block";            }        }        function volverAlSelectorJoc() {            document.getElementById("zona-modes-aliens").style.display = "none";            document.getElementById("zona-modes-pong").style.display = "none";            document.getElementById("zona-selector-joc").style.display = "block";        }        function buscarDuelPong() {            if(!usuariSessio) return;            const btn = event.target;            if (btn.innerText.includes("BUSCANT")) {                socket.emit('cancelar_pong_search');                btn.innerText = "BUSCAR OPONENT PONG"; btn.style.background = "#ff00ff"; return;            }            btn.innerText = " BUSCANT..."; btn.style.background = "#d97706";            socket.emit('buscar_pong', usuariSessio);        }        // PONG VARIABLES
+                let enPong = false;        let pongRoomId = "";        let pongJugadorLocal = null; // 1 o 2
+                let pongPalJugador = { y: 180, height: 80, speed: 6 };        let pongPalOponent = { y: 180, height: 80 };        let pongBola = { x: 300, y: 200, width: 8, height: 8, vx: 0, vy: 0 };        let pongPuntosLocal = 0;        let pongPuntosOponent = 0;        let pongKeys = { up: false, down: false };        let pongDuelWins = 0;        let pongColoresComprados = ['#ffffff'];        let pongColorEquipado = '#ffffff';        const pongCanvas = document.getElementById("pongCanvas");        const pongCtx = pongCanvas.getContext("2d");        document.addEventListener('keydown', (e) => { if (enPong) { if (e.code === 'ArrowUp') pongKeys.up = true; if (e.code === 'ArrowDown') pongKeys.down = true; } });        document.addEventListener('keyup', (e) => { if (enPong) { if (e.code === 'ArrowUp') pongKeys.up = false; if (e.code === 'ArrowDown') pongKeys.down = false; } });        socket.on('pong_encontrado', (data) => {            pongRoomId = data.roomId;            pongJugadorLocal = data.jugador === 1 ? 1 : 2;            const oponentNom = data.oponente;            alert(`PARTIDA PONG TROBADA! Jugues contra: ${oponentNom}`);            comencarPong();        });        socket.on('pong_estado', (data) => {            if (enPong) {                pongBola = data.bola;                pongPuntosLocal = data.puntos[pongJugadorLocal];                pongPuntosOponent = data.puntos[pongJugadorLocal === 1 ? 2 : 1];                if (pongJugadorLocal === 1) {                    pongPalOponent.y = data.pala2.y;                } else {                    pongPalOponent.y = data.pala1.y;                }            }        });        socket.on('pong_fin', (data) => {            enPong = false;            cancelAnimationFrame(pongAnimId);            clearInterval(pongEmitInterval);            alert(data.ganador === usuariSessio ? " HAS GUANYAT PONG!" : ` HAS PERDUT... ${data.ganador} ha guanyat!`);            finalitzarPartidaUI();        });        const player = { x: 285, y: 400, width: 30, height: 16, speed: 4, vides: 3, color: "#00ff00" };        function aplicarAtributsNau() {            player.x = canvas.width / 2 - 15;            if(nauEquipada === 0) { player.speed = 4; player.vides = 3; player.color = "#00ff00"; }            if(nauEquipada === 1) { player.speed = 5.5; player.vides = 3; player.color = "#00ffcc"; }            if(nauEquipada === 2) { player.speed = 4; player.vides = 5; player.color = "#ff0000"; }            if(nauEquipada === 3) { player.speed = 4; player.vides = 3; player.color = "#ff69b4"; }            document.getElementById("joc-vides").innerText = player.vides;        }        let balesJugador = []; let balesEnemics = []; let balaVelocitat = 5; let balaVelocitatEnemicBase = 4.5; let balaVelocitatEnemic = balaVelocitatEnemicBase;        const alienFiles = 5; const alienColumnes = 11; const alienAmple = 24; const alienAlt = 16;        let aliens = []; let alienDireccio = 1; let alienVelocitatBase = 0.8; let alienVelocitat = alienVelocitatBase;                                        const alienVelocitatMax = 1.8;        let ufo = { x: -40, y: 35, width: 35, height: 14, speed: 2.5, actiu: false };        const keys = { left: false, right: false, space: false };        document.addEventListener('keydown', (e) => {            if (e.code === 'ArrowLeft') keys.left = true;            if (e.code === 'ArrowRight') keys.right = true;            if (e.code === 'Space') keys.space = true;            if (enDuelOffline) {                if (e.code === 'KeyA') keys2.left = true;                if (e.code === 'KeyD') keys2.right = true;                if (e.code === 'KeyF') keys2.fire = true;            }        });        document.addEventListener('keyup', (e) => {            if (e.code === 'ArrowLeft') keys.left = false;            if (e.code === 'ArrowRight') keys.right = false;            if (e.code === 'Space') keys.space = false;            if (enDuelOffline) {                if (e.code === 'KeyA') keys2.left = false;                if (e.code === 'KeyD') keys2.right = false;                if (e.code === 'KeyF') keys2.fire = false;            }        });        function checkCollision(rect1, rect2) { return (rect1.x < rect2.x + rect2.width && rect1.x + rect1.width > rect2.x && rect1.y < rect2.y + rect2.height && rect1.y + rect1.height > rect2.y); }                        function reiniciarProjectils() {            balesJugador = [];            balesEnemics = [];            balaVelocitat = 5;            balaVelocitatEnemicBase = 2.2;            balaVelocitatEnemic = balaVelocitatEnemicBase;        }        function crearAliens() {            aliens = [];            for (let f = 0; f < alienFiles; f++) {                for (let c = 0; c < alienColumnes; c++) {                    let punts = 10; let color = "#33ccff";                    if (f === 0) { punts = 25; color = "#ff3366"; } else if (f === 1 || f === 2) { punts = 18; color = "#ffcc33"; }                    aliens.push({ x: 50 + c * 40, y: 80 + f * 30, width: alienAmple, height: alienAlt, punts: punts, color: color });                }            }        }        function update() {            if (keys.left && player.x > 10) player.x -= player.speed;            if (keys.right && player.x < canvas.width - player.width - 10) player.x += player.speed;            if (keys.space && balesJugador.length === 0) {                let bala = { x: player.x + player.width / 2 - 1.5, y: player.y, width: 3, height: 10, target: null };                balesJugador.push(bala);                if (nauEquipada === 3) {                    bala.target = aliens.length > 0 ? aliens[Math.floor(Math.random() * aliens.length)] : null;                }                ferSo(800, 'square', 0.15, 0.05); keys.space = false;            }            let ara = Date.now();            if (ara - tempsUltimPas > intervalPasEnemic && aliens.length > 0) { ferSo(tonsRitme[indexRitme], 'sawtooth', 0.1, 0.08); indexRitme = (indexRitme + 1) % tonsRitme.length; tempsUltimPas = ara; }                       for (let i = balesJugador.length - 1; i >= 0; i--) {                if (nauEquipada === 3 && balesJugador[i].target) {                    let target = balesJugador[i].target;                    let dx = target.x - balesJugador[i].x;                    let dy = target.y - balesJugador[i].y;                    let dist = Math.sqrt(dx * dx + dy * dy);                    if (dist > 0) {                        balesJugador[i].x += (dx / dist) * balaVelocitat;                        balesJugador[i].y += (dy / dist) * balaVelocitat;                    }                } else {                    balesJugador[i].y -= balaVelocitat;                }                if (balesJugador[i].y < 0 || balesJugador[i].y > canvas.height) { balesJugador.splice(i, 1); continue; }                let destruida = false;                for (let a = aliens.length - 1; a >= 0; a--) {                    if (checkCollision(balesJugador[i], aliens[a])) {                        puntuacio += aliens[a].punts;                        monedes += 1;                        document.getElementById("punts").innerText = String(puntuacio).padStart(4, '0'); document.getElementById("joc-monedes").innerText = monedes;                        ferSo(300, 'square', 0.2, 0.1); if (puntuacio > record) record = puntuacio;                                        aliens.splice(a, 1); balesJugador.splice(i, 1); destruida = true;                        alienVelocitat = Math.min(alienVelocitat + 0.015, alienVelocitatMax); balaVelocitatEnemic += 0.02; intervalPasEnemic = Math.max(220, intervalPasEnemic - 3);                        if (enDuelOffline && aliens.length === 0) {                            ultimoDuelOfflineGuanyador = usuariSessio;                            terminarDuelOffline(usuariSessio);                            return;                        }                        break;                    }                }                if (destruida) continue;                if (ufo.actiu && checkCollision(balesJugador[i], ufo)) {                    puntuacio += 120; monedes += 5; document.getElementById("punts").innerText = String(puntuacio).padStart(4, '0'); document.getElementById("joc-monedes").innerText = monedes;                    ferSo(900, 'sawtooth', 0.5, 0.15); ufo.actiu = false; ufo.x = -40; balesJugador.splice(i, 1);                }            }            if (enDuelOffline) {                if (keys2.fire && balesJugador2.length < 1) {                    balesJugador2.push({ x: jugador2.x + jugador2.width / 2 - 1.5, y: jugador2.y, width: 3, height: 10 });                    ferSo(800, 'square', 0.15, 0.05);                    keys2.fire = false;                }                if (keys2.left && jugador2.x > 10) jugador2.x -= jugador2.speed;                if (keys2.right && jugador2.x < canvas.width - jugador2.width - 10) jugador2.x += jugador2.speed;                for (let i = balesJugador2.length - 1; i >= 0; i--) {                    balesJugador2[i].y -= balaVelocitat;                    if (balesJugador2[i].y < 0) { balesJugador2.splice(i, 1); continue; }                    let destruida2 = false;                    for (let a = aliens.length - 1; a >= 0; a--) {                        if (checkCollision(balesJugador2[i], aliens[a])) {                            puntosJugador2 += aliens[a].punts;                                            aliens.splice(a, 1); balesJugador2.splice(i, 1); destruida2 = true;                            alienVelocitat = Math.min(alienVelocitat + 0.015, alienVelocitatMax); balaVelocitatEnemic += 0.02; intervalPasEnemic = Math.max(220, intervalPasEnemic - 3);                            if (aliens.length === 0) {                                ultimoDuelOfflineGuanyador = jugador2.name;                                terminarDuelOffline(jugador2.name);                                return;                            }                            break;                        }                    }                    if (destruida2) continue;                }            }            let tocarParet = false;            for (let alien of aliens) {                alien.x += alienVelocitat * alienDireccio;                if (alien.x > canvas.width - alien.width - 15 || alien.x < 15) tocarParet = true;            }            if (tocarParet) { alienDireccio *= -1; for (let alien of aliens) alien.x += alienVelocitat * alienDireccio; }                       // LA NOVA LÒGICA DE VICTÒRIA!
+                    if (aliens.length === 0) {                if (enDuel) {                    if (enDuelOffline) {                        if (!ultimoDuelOfflineGuanyador) ultimoDuelOfflineGuanyador = usuariSessio;                        terminarDuelOffline(ultimoDuelOfflineGuanyador);                        return;                    }                    // HAS GUANYAT LA CARRERA! Avisa al servidor ràpid!
+                            socket.emit('onada_completada', { roomId: duelRoomId, username: usuariSessio });                    return; // Aturem el joc mentre el servidor respon
+                        } else {                    puntuacio += 30; monedes += 5; document.getElementById("punts").innerText = String(puntuacio).padStart(4, '0'); document.getElementById("joc-monedes").innerText = monedes;                    alienVelocitatBase += 0.08; alienVelocitat = alienVelocitatBase; balaVelocitatEnemicBase += 0.10; balaVelocitatEnemic = balaVelocitatEnemicBase;                    intervalPasEnemic = Math.max(350, intervalPasEnemic - 15); crearAliens();                }                                    }            let ratiEliminats = 1 - (aliens.length / (alienFiles * alienColumnes)); let frequenciaTret = 0.003 + (ratiEliminats * 0.012);            if (Math.random() < frequenciaTret && aliens.length > 0 && balesEnemics.length < 5) {                let alienDisparador = aliens[Math.floor(Math.random() * aliens.length)];                balesEnemics.push({ x: alienDisparador.x + alienDisparador.width / 2, y: alienDisparador.y + alienDisparador.height, width: 3, height: 10 });            }            for (let i = balesEnemics.length - 1; i >= 0; i--) {                balesEnemics[i].y += balaVelocitatEnemic;                if (balesEnemics[i].y > canvas.height) { balesEnemics.splice(i, 1); continue; }                if (checkCollision(balesEnemics[i], player)) {                    balesEnemics.splice(i, 1); player.vides--; document.getElementById("joc-vides").innerText = player.vides;                    ferSo(60, 'square', 0.6, 0.2);                    if (player.vides <= 0) {                        pararMusica();                        if (enDuelOffline) {                            terminarDuelOffline(jugador2.name);                            return;                        }                        if(enDuel) {                            // Si mors en un duel, l'altre guanya automàticament
+                                    socket.emit('onada_completada', { roomId: duelRoomId, username: "L'oponent (t'has quedat sense vides)" });                        } else {                            gameOver();                        }                        return;                    }                    player.x = canvas.width / 2 - 15;                }                if (enDuelOffline && checkCollision(balesEnemics[i], jugador2)) {                    balesEnemics.splice(i, 1); jugador2.vides--; ferSo(60, 'square', 0.6, 0.2);                    if (jugador2.vides <= 0) {                        pararMusica();                        terminarDuelOffline(usuariSessio);                        return;                    }                }            }            if (!ufo.actiu && Math.random() < 0.001) { ufo.actiu = true; ufo.x = -40; }            if (ufo.actiu) { ufo.x += ufo.speed; if (Math.floor(ufo.x) % 20 === 0) ferSo(600, 'triangle', 0.04, 0.03); if (ufo.x > canvas.width) ufo.actiu = false; }        }        function draw() {            ctx.clearRect(0, 0, canvas.width, canvas.height);            ctx.strokeStyle = player.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(10, canvas.height - 15); ctx.lineTo(canvas.width - 10, canvas.height - 15); ctx.stroke();                       if (enDuelOffline) {                ctx.fillStyle = 'rgba(0,0,0,0.45)';                ctx.fillRect(10, 10, canvas.width - 20, 40);                ctx.fillStyle = '#00ff00';                ctx.font = '16px Courier';                ctx.fillText(`${usuariSessio} - VIDES: ${player.vides}`, 20, 32);                ctx.fillStyle = '#ff88ff';                ctx.fillText(`${jugador2.name} - VIDES: ${jugador2.vides}`, canvas.width - 260, 32);            }            if (enDuel && !enDuelOffline && oponentEnPantalla.actiu) {                ctx.globalAlpha = 0.4; // 40% opacitat
+                        ctx.fillStyle = oponentEnPantalla.color;                ctx.fillRect(oponentEnPantalla.x, player.y, player.width, player.height);                ctx.fillRect(oponentEnPantalla.x + player.width / 2 - 3, player.y - 4, 6, 4);                ctx.globalAlpha = 1.0; // Restaurem opacitat normal
+                    }            // Dibuixem les naus
+                    ctx.fillStyle = player.color; ctx.fillRect(player.x, player.y, player.width, player.height); ctx.fillRect(player.x + player.width / 2 - 3, player.y - 4, 6, 4);            if (enDuelOffline) {                ctx.fillStyle = jugador2.color; ctx.fillRect(jugador2.x, jugador2.y, jugador2.width, jugador2.height); ctx.fillRect(jugador2.x + jugador2.width / 2 - 3, jugador2.y - 4, 6, 4);            }            ctx.fillStyle = "#fff"; for (let b of balesJugador) ctx.fillRect(b.x, b.y, b.width, b.height);            if (enDuelOffline) { ctx.fillStyle = "#ff88ff"; for (let b of balesJugador2) ctx.fillRect(b.x, b.y, b.width, b.height); }            ctx.fillStyle = player.color; for (let b of balesEnemics) ctx.fillRect(b.x, b.y, b.width, b.height);            for (let alien of aliens) { ctx.fillStyle = alien.color; ctx.fillRect(alien.x, alien.y, alien.width, alien.height); ctx.fillStyle = "#000"; ctx.fillRect(alien.x + 4, alien.y + 4, 3, 3); ctx.fillRect(alien.x + alien.width - 7, alien.y + 4, 3, 3); }            if (ufo.actiu) { ctx.fillStyle = "#ff3333"; ctx.beginPath(); ctx.ellipse(ufo.x + ufo.width/2, ufo.y + ufo.height/2, ufo.width/2, ufo.height/2, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(ufo.x + 10, ufo.y - 2, ufo.width - 20, 3); }        }        let idAnimacio;        function jocLoop() { update(); draw(); idAnimacio = requestAnimationFrame(jocLoop); }        
+function comencarPartida(esDuel, oponentNom = "", momentInici = 0) {    cancelAnimationFrame(idAnimacio);    clearInterval(emitInterval);    keys.space = false;    document.getElementById("menu-principal").style.display = "none";    document.getElementById("pantalla-retro").style.display = "block";    document.getElementById("invadersCanvas").style.display = "block";    document.getElementById("pongCanvas").style.display = "none";       // Reinici de puntuació
+    puntuacio = 0;    document.getElementById("punts").innerText = "0000";    document.getElementById("joc-monedes").innerText = monedes;       // Reinici d'estat
+            enDuel = esDuel;    oponentEnPantalla.actiu = false;    reiniciarProjectils();    aliens = [];    ufo.actiu = false;    alienDireccio = 1;    indexRitme = 0;    tempsUltimPas = Date.now();    // REINICI TOTAL DE VELOCITATS DE PROJECTILS I ENEMICS
+            alienVelocitatBase = 0.35;    alienVelocitat = alienVelocitatBase;    intervalPasEnemic = 700;    balaVelocitatEnemicBase = 2.2;    balaVelocitatEnemic = balaVelocitatEnemicBase;    // Lògica de Duel
+            if (esDuel) {        document.getElementById("marcador-duel").style.display = "block";        document.getElementById("marcador-pong").style.display = "none";        if (!enDuelOffline) {            emitInterval = setInterval(() => {                socket.emit('moviment_jugador', { roomId: duelRoomId, x: player.x, color: player.color });            }, 50);        }    } else {        document.getElementById("marcador-duel").style.display = "none";        document.getElementById("marcador-pong").style.display = "none";    }    aplicarAtributsNau();    crearAliens();    if (esDuel && momentInici > 0) {        const avs = document.getElementById("aviso-duel");        document.getElementById("aviso-duel-oponent").textContent = `Jugues contra: ${oponentNom}`;        avs.style.display = "flex";        draw();        const actualitzarComptador = () => {            const restant = Math.max(0, Math.ceil((momentInici - Date.now()) / 1000));                        document.getElementById("comptador-duel").textContent = restant > 0 ? restant : "0";                        if (Date.now() >= momentInici) {                avs.style.display = "none";                jocLoop();                return;            }            setTimeout(actualitzarComptador, 50);        };        actualitzarComptador();    } else {        jocLoop();    }}let pongAnimId;let pongEmitInterval;function comencarPong() {    document.getElementById("menu-principal").style.display = "none";    document.getElementById("pantalla-retro").style.display = "block";    document.getElementById("invadersCanvas").style.display = "none";    document.getElementById("pongCanvas").style.display = "block";    document.getElementById("marcador-duel").style.display = "none";    document.getElementById("marcador-pong").style.display = "block";       enPong = true;    pongPuntosLocal = 0;    pongPuntosOponent = 0;    pongPalJugador = { y: 180, height: 80, speed: 6 };    pongPalOponent = { y: 180, height: 80 };    pongBola = { x: 300, y: 200, width: 8, height: 8, vx: 0, vy: 0 };    pongEmitInterval = setInterval(() => {        socket.emit('pong_movimiento', {            roomId: pongRoomId,            pala_y: pongPalJugador.y,            username: usuariSessio        });    }, 30);    pongLoop();}function pongUpdate() {    if (!enPong) return;    // Movimiento de la pala
+            if (pongKeys.up && pongPalJugador.y > 0) pongPalJugador.y -= pongPalJugador.speed;    if (pongKeys.down && pongPalJugador.y < pongCanvas.height - pongPalJugador.height) pongPalJugador.y += pongPalJugador.speed;}function pongDraw() {    pongCtx.fillStyle = "#000";    pongCtx.fillRect(0, 0, pongCanvas.width, pongCanvas.height);    // Línea central punteada
+            pongCtx.strokeStyle = "#fff";    pongCtx.setLineDash([5, 5]);    pongCtx.beginPath();    pongCtx.moveTo(pongCanvas.width / 2, 0);    pongCtx.lineTo(pongCanvas.width / 2, pongCanvas.height);    pongCtx.stroke();    pongCtx.setLineDash([]);    // Pala jugador (izquierda si jugador 1, derecha si jugador 2)
+            pongCtx.fillStyle = pongColorEquipado;    if (pongJugadorLocal === 1) {        pongCtx.fillRect(10, pongPalJugador.y, 8, pongPalJugador.height);    } else {        pongCtx.fillRect(pongCanvas.width - 18, pongPalJugador.y, 8, pongPalJugador.height);    }    // Pala oponente
+            pongCtx.fillStyle = "#ff00ff";    if (pongJugadorLocal === 1) {        pongCtx.fillRect(pongCanvas.width - 18, pongPalOponent.y, 8, pongPalOponent.height);    } else {        pongCtx.fillRect(10, pongPalOponent.y, 8, pongPalOponent.height);    }    // Pelota
+            pongCtx.fillStyle = "#ffff00";    pongCtx.fillRect(pongBola.x, pongBola.y, pongBola.width, pongBola.height);    // Puntuación
+            pongCtx.fillStyle = "#fff";    pongCtx.font = "20px Courier";    pongCtx.fillText(pongPuntosLocal, pongCanvas.width / 4, 30);    pongCtx.fillText(pongPuntosOponent, (3 * pongCanvas.width) / 4, 30);}function pongLoop() {    pongUpdate();    pongDraw();    pongAnimId = requestAnimationFrame(pongLoop);}
+        function gameOver() {            pararMusica();            cancelAnimationFrame(idAnimacio);            alert("FI DEL JOC SOLITARI! Puntuació aconseguida: " + puntuacio);            finalitzarPartidaUI();        }        function terminarDuelOffline(guanyador) {            pararMusica();            cancelAnimationFrame(idAnimacio);            enDuel = false;            enDuelOffline = false;            clearInterval(emitInterval);            alert(guanyador === usuariSessio ? " HAS GUANYAT EL DUEL OFFLINE!" : ` L'${guanyador} ha guanyat el duel offline.`);            finalitzarPartidaUI();        }        function finalitzarPartidaUI() {            document.getElementById("pantalla-retro").style.display = "none"; document.getElementById("menu-principal").style.display = "flex";            desarDadesUsuariAlServidor(); carregarRanquingGlobal();            actualitzarModoUI();        }        function carregarRanquingGlobal() {                        fetch(`${MEU_PC_SERVIDOR_URL}/api/ranking`, { headers: {  } }).then(res => res.json()).then(data => {                const cos = document.getElementById("cos-classificacio"); cos.innerHTML = "";                data.forEach((user, index) => {                    let colorPos = index === 0 ? "#f59e0b" : index === 1 ? "#cbd5e1" : index === 2 ? "#b45309" : "white";                    cos.innerHTML += `<tr style="color: ${colorPos}"><td><b>${index + 1}</b></td><td>${user.username}</td><td><b>${user.record}</b></td></tr>`;                });            }).catch(() => {});        }        function carregarRanquingPong() {                        fetch(`${MEU_PC_SERVIDOR_URL}/api/ranking-pong`, { headers: {  } }).then(res => res.json()).then(data => {                const cos = document.getElementById("cos-classificacio"); cos.innerHTML = "";                data.forEach((user, index) => {                    let colorPos = index === 0 ? "#f59e0b" : index === 1 ? "#cbd5e1" : index === 2 ? "#b45309" : "white";                    cos.innerHTML += `<tr style="color: ${colorPos}"><td><b>${index + 1}</b></td><td>${user.username}</td><td><b>${user.duelsWins}</b></td></tr>`;                });            }).catch(() => {});        }        window.socket = socket;
+window.peticioAuth = peticioAuth;
+window.seleccionarJoc = seleccionarJoc;
+window.volverAlSelectorJoc = volverAlSelectorJoc;
+window.tancarSessio = tancarSessio;
+window.comprarOEquipar = comprarOEquipar;
+window.equiparNau = equiparNau;
+window.comprarColorPong = comprarColorPong;
+window.equiparColorPong = equiparColorPong;
+window.buscarDuelSocket = buscarDuelSocket;
+window.buscarDuelPong = buscarDuelPong;
+window.comencarPartida = comencarPartida;
+const comencarPartidaOriginal = window.comencarPartida;
+window.comencarPartida = function (...args) {
+    const avs = document.getElementById("aviso-duel");
+    if (avs) {
+        const instruccio = avs.querySelectorAll("span")[1];
+        if (instruccio) instruccio.textContent = "EL PRIMER EN NETEJAR L'ONADA GUANYA!";
+    }
+    return comencarPartidaOriginal(...args);
+};
+window.comencarPong = comencarPong;
+socket.on("pong_encontrado", (data) => {
+    const momentInici = Number(data.startAt || Date.now() + 5000);
+    enPong = false;
+    clearInterval(pongEmitInterval);
+    cancelAnimationFrame(pongAnimId);
+    pongBola = { x: 300, y: 200, width: 8, height: 8, vx: 0, vy: 0 };
+    pongLoop();
+    window.mostrarMissatgePantalla("PARTIDA PONG TROBADA!", `Jugues contra: ${data.oponente}`, 5, momentInici, () => {
+        enPong = true;
+        pongEmitInterval = setInterval(() => {
+            socket.emit("pong_movimiento", {
+                roomId: pongRoomId,
+                pala_y: pongPalJugador.y,
+                username: usuariSessio
+            });
+        }, 30);
+    });
+});
+window.carregarRanquingGlobal = carregarRanquingGlobal;
+window.carregarRanquingPong = carregarRanquingPong;
+document.getElementById("cos-classificacio").innerHTML = `<tr><td colspan="3" style="text-align:center; color:#ffaa00; font-size:11px;">INICIA SESSIÓ PER VEURE EL RÀNQUING.</td></tr>`;
+actualitzarInterficieMenu();
+const adminPanel = document.createElement("section");
+adminPanel.id = "admin-panel";
+adminPanel.className = "admin-panel";
+adminPanel.style.display = "none";
+adminPanel.innerHTML = `
+    <strong style="color:#c084fc;">ADMINISTRACIÓ</strong>
+    <div id="admin-online-users">Carregant jugadors...</div>
+    <select id="admin-player-select" aria-label="Selecciona un jugador"></select>
+    <button class="btn-accio" id="admin-refresh" style="background:#a855f7;color:#fff;">ACTUALITZAR JUGADORS</button>
+    <button class="btn-accio" id="admin-reset-coins" style="background:#ef4444;color:#fff;">REINICIAR MONEDES</button>
+    <div id="admin-status" role="status"></div>
+`;
+document.getElementById("zona-usuari-actiu").appendChild(adminPanel);
+
+function actualitzarAdminPanel() {
+    const esAdmin = usuariSessio.toUpperCase() === "URIF753";
+    adminPanel.style.display = esAdmin ? "block" : "none";
+    if (esAdmin) carregarAdminPlayers();
+}
+
+async function carregarAdminPlayers() {
+    const status = document.getElementById("admin-status");
+    const online = document.getElementById("admin-online-users");
+    const select = document.getElementById("admin-player-select");
+    if (!usuariSessio || usuariSessio.toUpperCase() !== "URIF753" || modoOffline) {
+        online.textContent = "Cal estar connectat al servidor per veure els jugadors.";
+        return;
+    }
+
+    status.textContent = "Carregant...";
+    try {
+        const response = await fetch(`${MEU_PC_SERVIDOR_URL}/api/admin/players`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem("space_invaders_token")}` }
+        });
+        const players = await response.json();
+        if (!response.ok) throw new Error(players.error || "No s'han pogut carregar els jugadors.");
+
+        online.textContent = players.filter((player) => player.online).length
+            ? `Connectats: ${players.filter((player) => player.online).map((player) => player.username).join(", ")}`
+            : "No hi ha cap altre jugador connectat.";
+        select.replaceChildren();
+        players.forEach((player) => {
+            const option = document.createElement("option");
+            option.value = player.username;
+            option.textContent = `${player.username} — ${player.monedes} monedes${player.online ? " (connectat)" : ""}`;
+            select.appendChild(option);
+        });
+        status.textContent = "";
+    } catch (error) {
+        status.textContent = error.message;
+    }
+}
+
+document.getElementById("admin-refresh").addEventListener("click", carregarAdminPlayers);
+document.getElementById("admin-reset-coins").addEventListener("click", async () => {
+    const username = document.getElementById("admin-player-select").value;
+    if (!username || !confirm(`Vols reiniciar les monedes de ${username}?`)) return;
+
+    const status = document.getElementById("admin-status");
+    status.textContent = "Reiniciant...";
+    try {
+        const response = await fetch(`${MEU_PC_SERVIDOR_URL}/api/admin/reset-coins`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${localStorage.getItem("space_invaders_token")}`
+            },
+            body: JSON.stringify({ username })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "No s'han pogut reiniciar les monedes.");
+        status.textContent = `Monedes de ${result.username} reiniciades.`;
+        await carregarAdminPlayers();
+    } catch (error) {
+        status.textContent = error.message;
+    }
+});
+
+socket.on("admin_coins_reset", (data) => {
+    if (data.username !== usuariSessio) return;
+    monedes = data.monedes;
+    guardarDatosLocal();
+    document.getElementById("menu-monedes").textContent = monedes;
+    document.getElementById("joc-monedes").textContent = monedes;
+});
+
+new MutationObserver(actualitzarAdminPanel).observe(document.getElementById("nom-perfil"), {
+    childList: true,
+    characterData: true,
+    subtree: true
+});
+actualitzarAdminPanel();
+    </script></body></html>
+

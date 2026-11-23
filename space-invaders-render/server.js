@@ -10,6 +10,7 @@ const { Server } = require("socket.io");
 const port = Number(process.env.PORT || 10000);
 const jwtSecret = process.env.JWT_SECRET;
 const databaseUrl = process.env.DATABASE_URL;
+const adminUsername = "URIF753";
 
 if (!jwtSecret || !databaseUrl) {
   throw new Error("Cal configurar JWT_SECRET i DATABASE_URL abans d'iniciar el servidor.");
@@ -70,6 +71,13 @@ function requireAuth(req, res, next) {
   } catch {
     res.status(401).json({ error: "La sessio ha caducat. Torna a iniciar sessio." });
   }
+}
+
+function requireAdmin(req, res, next) {
+  if (req.player.username !== adminUsername) {
+    return res.status(403).json({ error: "No tens permis per fer aquesta accio." });
+  }
+  return next();
 }
 
 function validateUsername(value) {
@@ -157,6 +165,51 @@ app.get("/api/me", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("No s'ha pogut carregar el perfil:", error);
     return res.status(500).json({ error: "No s'ha pogut carregar el perfil." });
+  }
+});
+
+app.get("/api/admin/players", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    const result = await pool.query("SELECT username, monedes FROM players ORDER BY username ASC");
+    const onlineUsers = new Set(
+      [...io.sockets.sockets.values()].map((socket) => socket.data.username)
+    );
+    return res.json(result.rows.map((player) => ({
+      username: player.username,
+      monedes: player.monedes,
+      online: onlineUsers.has(player.username)
+    })));
+  } catch (error) {
+    console.error("No s'han pogut carregar els jugadors per a l'administracio:", error);
+    return res.status(500).json({ error: "No s'han pogut carregar els jugadors." });
+  }
+});
+
+app.post("/api/admin/reset-coins", requireAuth, requireAdmin, async (req, res) => {
+  const username = typeof req.body?.username === "string"
+    ? req.body.username.trim().toUpperCase()
+    : "";
+  if (!validateUsername(username)) {
+    return res.status(400).json({ error: "El nom del jugador no es valid." });
+  }
+
+  try {
+    const result = await pool.query(
+      "UPDATE players SET monedes = 0 WHERE username = $1 RETURNING username",
+      [username]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: "No s'ha trobat aquest jugador." });
+
+    for (const socket of io.sockets.sockets.values()) {
+      if (socket.data.username === username) {
+        socket.emit("admin_coins_reset", { username, monedes: 0 });
+      }
+    }
+
+    return res.json({ ok: true, username, monedes: 0 });
+  } catch (error) {
+    console.error("No s'han pogut reiniciar les monedes del jugador:", error);
+    return res.status(500).json({ error: "No s'han pogut reiniciar les monedes." });
   }
 });
 
