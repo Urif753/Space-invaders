@@ -36,11 +36,36 @@
     line-height: 1;
     text-shadow: 0 0 16px #00ff00;
 }
-.tabla-ranking { width: 100%; border-collapse: collapse; font-size: 13px; }        .tabla-ranking th { border-bottom: 1px solid #555; text-align: left; padding-bottom: 5px; color: #888; }        .tabla-ranking td { padding: 5px 0; border-bottom: 1px dotted #333; }        .item-botiga { border-bottom: 1px dashed #444; padding: 10px 0; font-size: 12px; }        .scrollable-shop { max-height: 520px; overflow-y: auto; padding-right: 8px; }        .scrollable-shop::-webkit-scrollbar { width: 8px; }        .scrollable-shop::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }    </style>
-        .admin-panel { margin-top: 16px; padding: 10px; border: 1px solid #a855f7; background: #100b18; text-align: left; }
-        .admin-panel select { width: 100%; margin: 6px 0; padding: 7px; background: #000; color: #fff; border: 1px solid #555; font-family: monospace; }
-        #admin-online-users { max-height: 100px; overflow-y: auto; color: #00ffcc; font-size: 12px; overflow-wrap: anywhere; }
-        #admin-status { min-height: 1em; color: #ffcc00; font-size: 12px; }    </style>
+.tabla-ranking { width: 100%; border-collapse: collapse; font-size: 13px; }        .tabla-ranking th { border-bottom: 1px solid #555; text-align: left; padding-bottom: 5px; color: #888; }        .tabla-ranking td { padding: 5px 0; border-bottom: 1px dotted #333; }        .item-botiga { border-bottom: 1px dashed #444; padding: 10px 0; font-size: 12px; }        .scrollable-shop { max-height: 520px; overflow-y: auto; padding-right: 8px; }        .scrollable-shop::-webkit-scrollbar { width: 8px; }        .scrollable-shop::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        #admin-open { background: linear-gradient(135deg, #9333ea, #6d28d9); color: #fff; border: 1px solid #c084fc; }
+        .admin-dialog { width: min(820px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid #a855f7; border-radius: 12px; background: #09070e; color: #f5f3ff; box-shadow: 0 0 55px rgba(168, 85, 247, .4); font-family: 'Courier New', Courier, monospace; }
+        .admin-dialog::backdrop { background: rgba(0, 0, 0, .82); backdrop-filter: blur(5px); }
+        .admin-window { padding: clamp(16px, 4vw, 30px); }
+        .admin-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 18px; border-bottom: 1px solid #352344; }
+        .admin-eyebrow { margin: 0 0 6px; color: #c084fc; font-size: 11px; letter-spacing: 2px; }
+        .admin-header h2 { margin: 0; color: #fff; font-size: clamp(21px, 4vw, 30px); }
+        .admin-close { width: 38px; height: 38px; border: 1px solid #574166; border-radius: 8px; background: #160f20; color: #fff; font: bold 22px monospace; cursor: pointer; }
+        .admin-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+        .admin-stat { padding: 14px; border: 1px solid #352344; border-radius: 9px; background: linear-gradient(140deg, #160f20, #0b0910); }
+        .admin-stat span { display: block; color: #a89bb4; font-size: 11px; letter-spacing: 1px; }
+        .admin-stat strong { display: block; margin-top: 7px; color: #00ffcc; font-size: 24px; }
+        .admin-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(240px, .85fr); gap: 16px; }
+        .admin-card { min-width: 0; padding: 16px; border: 1px solid #352344; border-radius: 9px; background: #100c16; }
+        .admin-card h3 { margin: 0 0 12px; color: #e9d5ff; font-size: 14px; }
+        #admin-player-list { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
+        .admin-player-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid #292132; border-radius: 7px; background: #0a080d; font-size: 12px; }
+        .admin-player-name { color: #fff; overflow-wrap: anywhere; }
+        .admin-player-meta { color: #aaa; text-align: right; white-space: nowrap; }
+        .admin-online-dot { color: #00ff99; }
+        .admin-offline-dot { color: #777; }
+        .admin-note { color: #aaa; font-size: 12px; line-height: 1.5; }
+        #admin-player-select { box-sizing: border-box; width: 100%; margin: 8px 0 4px; padding: 10px; border: 1px solid #514060; border-radius: 6px; background: #08060b; color: #fff; font: 12px monospace; }
+        #admin-reset-coins { border: 1px solid #fb7185; border-radius: 6px; background: #7f1d1d; color: #fff; }
+        #admin-status { min-height: 18px; margin-top: 12px; color: #ffcc00; font-size: 12px; overflow-wrap: anywhere; }
+        .admin-footer { display: flex; justify-content: space-between; gap: 10px; margin-top: 16px; }
+        .admin-footer button { width: auto; min-width: 155px; margin: 0; border-radius: 6px; }
+        @media (max-width: 620px) { .admin-layout { grid-template-columns: 1fr; } .admin-footer { flex-direction: column; } .admin-footer button { width: 100%; } }
+    </style>
 <script>
 window.peticioAuth = async function (tipus) {
     const username = document.getElementById("auth-username").value.trim().toUpperCase();
@@ -247,36 +272,77 @@ window.carregarRanquingGlobal = carregarRanquingGlobal;
 window.carregarRanquingPong = carregarRanquingPong;
 document.getElementById("cos-classificacio").innerHTML = `<tr><td colspan="3" style="text-align:center; color:#ffaa00; font-size:11px;">INICIA SESSIÓ PER VEURE EL RÀNQUING.</td></tr>`;
 actualitzarInterficieMenu();
-const adminPanel = document.createElement("section");
-adminPanel.id = "admin-panel";
-adminPanel.className = "admin-panel";
-adminPanel.style.display = "none";
-adminPanel.innerHTML = `
-    <strong style="color:#c084fc;">ADMINISTRACIÓ</strong>
-    <div id="admin-online-users">Carregant jugadors...</div>
-    <select id="admin-player-select" aria-label="Selecciona un jugador"></select>
-    <button class="btn-accio" id="admin-refresh" style="background:#a855f7;color:#fff;">ACTUALITZAR JUGADORS</button>
-    <button class="btn-accio" id="admin-reset-coins" style="background:#ef4444;color:#fff;">REINICIAR MONEDES</button>
-    <div id="admin-status" role="status"></div>
+const adminButton = document.createElement("button");
+adminButton.id = "admin-open";
+adminButton.className = "btn-accio";
+adminButton.textContent = "OBRIR PANELL ADMIN";
+adminButton.style.display = "none";
+document.getElementById("zona-usuari-actiu").appendChild(adminButton);
+
+const adminDialog = document.createElement("dialog");
+adminDialog.id = "admin-dialog";
+adminDialog.className = "admin-dialog";
+adminDialog.setAttribute("aria-labelledby", "admin-title");
+adminDialog.innerHTML = `
+    <div class="admin-window">
+        <header class="admin-header">
+            <div>
+                <p class="admin-eyebrow">SPACE INVADERS / CONTROL CENTRAL</p>
+                <h2 id="admin-title">Panell d'administració</h2>
+            </div>
+            <button type="button" class="admin-close" id="admin-close" aria-label="Tancar panell">×</button>
+        </header>
+        <div class="admin-stats">
+            <div class="admin-stat"><span>COMPTES REGISTRATS</span><strong id="admin-total">—</strong></div>
+            <div class="admin-stat"><span>JUGADORS CONNECTATS</span><strong id="admin-online-count">—</strong></div>
+        </div>
+        <div class="admin-layout">
+            <section class="admin-card">
+                <h3>ESTAT DELS JUGADORS</h3>
+                <div id="admin-player-list" aria-live="polite"></div>
+            </section>
+            <section class="admin-card">
+                <h3>GESTIÓ DE MONEDES</h3>
+                <p class="admin-note">Selecciona un compte per posar el seu saldo a zero. Si està connectat, el canvi s'aplicarà al moment.</p>
+                <select id="admin-player-select" aria-label="Selecciona un jugador"></select>
+                <button class="btn-accio" id="admin-reset-coins">REINICIAR MONEDES</button>
+                <div id="admin-status" role="status" aria-live="polite"></div>
+            </section>
+        </div>
+        <footer class="admin-footer">
+            <button type="button" class="btn-accio" id="admin-refresh" style="background:#6d28d9;color:#fff;">ACTUALITZAR DADES</button>
+            <button type="button" class="btn-accio" id="admin-close-footer" style="background:#28212f;color:#fff;">TANCAR</button>
+        </footer>
+    </div>
 `;
-document.getElementById("zona-usuari-actiu").appendChild(adminPanel);
+document.body.appendChild(adminDialog);
 
 function actualitzarAdminPanel() {
     const esAdmin = usuariSessio.toUpperCase() === "URIF753";
-    adminPanel.style.display = esAdmin ? "block" : "none";
-    if (esAdmin) carregarAdminPlayers();
+    adminButton.style.display = esAdmin ? "block" : "none";
+    if (!esAdmin && adminDialog.open) adminDialog.close();
 }
+
+adminButton.addEventListener("click", () => {
+    if (!adminDialog.open) adminDialog.showModal();
+    carregarAdminPlayers();
+});
+document.getElementById("admin-close").addEventListener("click", () => adminDialog.close());
+document.getElementById("admin-close-footer").addEventListener("click", () => adminDialog.close());
+adminDialog.addEventListener("click", (event) => {
+    if (event.target === adminDialog) adminDialog.close();
+});
 
 async function carregarAdminPlayers() {
     const status = document.getElementById("admin-status");
-    const online = document.getElementById("admin-online-users");
+    const list = document.getElementById("admin-player-list");
     const select = document.getElementById("admin-player-select");
     if (!usuariSessio || usuariSessio.toUpperCase() !== "URIF753" || modoOffline) {
-        online.textContent = "Cal estar connectat al servidor per veure els jugadors.";
+        status.textContent = "Cal iniciar sessió al servidor per veure els jugadors.";
         return;
     }
 
-    status.textContent = "Carregant...";
+    status.textContent = "Carregant dades...";
     try {
         const response = await fetch(`${MEU_PC_SERVIDOR_URL}/api/admin/players`, {
             headers: { Authorization: `Bearer ${localStorage.getItem("space_invaders_token")}` }
@@ -284,14 +350,38 @@ async function carregarAdminPlayers() {
         const players = await response.json();
         if (!response.ok) throw new Error(players.error || "No s'han pogut carregar els jugadors.");
 
-        online.textContent = players.filter((player) => player.online).length
-            ? `Connectats: ${players.filter((player) => player.online).map((player) => player.username).join(", ")}`
-            : "No hi ha cap altre jugador connectat.";
+        const onlinePlayers = players.filter((player) => player.online);
+        document.getElementById("admin-total").textContent = players.length;
+        document.getElementById("admin-online-count").textContent = onlinePlayers.length;
+        list.replaceChildren();
         select.replaceChildren();
+        if (!players.length) {
+            const empty = document.createElement("p");
+            empty.className = "admin-note";
+            empty.textContent = "Encara no hi ha comptes registrats.";
+            list.appendChild(empty);
+        }
+
         players.forEach((player) => {
+            const row = document.createElement("div");
+            row.className = "admin-player-row";
+            const name = document.createElement("span");
+            name.className = "admin-player-name";
+            name.textContent = player.username;
+            const meta = document.createElement("span");
+            meta.className = "admin-player-meta";
+            const presence = document.createElement("span");
+            presence.className = player.online ? "admin-online-dot" : "admin-offline-dot";
+            presence.textContent = player.online ? "● EN LÍNIA" : "● DESCONECTAT";
+            const balance = document.createElement("span");
+            balance.textContent = `${player.monedes} monedes`;
+            meta.append(presence, document.createElement("br"), balance);
+            row.append(name, meta);
+            list.appendChild(row);
+
             const option = document.createElement("option");
             option.value = player.username;
-            option.textContent = `${player.username} — ${player.monedes} monedes${player.online ? " (connectat)" : ""}`;
+            option.textContent = `${player.username} — ${player.monedes} monedes`;
             select.appendChild(option);
         });
         status.textContent = "";
@@ -306,7 +396,7 @@ document.getElementById("admin-reset-coins").addEventListener("click", async () 
     if (!username || !confirm(`Vols reiniciar les monedes de ${username}?`)) return;
 
     const status = document.getElementById("admin-status");
-    status.textContent = "Reiniciant...";
+    status.textContent = "Reiniciant monedes...";
     try {
         const response = await fetch(`${MEU_PC_SERVIDOR_URL}/api/admin/reset-coins`, {
             method: "POST",
@@ -318,7 +408,7 @@ document.getElementById("admin-reset-coins").addEventListener("click", async () 
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "No s'han pogut reiniciar les monedes.");
-        status.textContent = `Monedes de ${result.username} reiniciades.`;
+        status.textContent = `Monedes de ${result.username} reiniciades correctament.`;
         await carregarAdminPlayers();
     } catch (error) {
         status.textContent = error.message;
