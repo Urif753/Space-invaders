@@ -3,18 +3,27 @@
 <!DOCTYPE html><html lang="ca"><head>    <meta charset="UTF-8">    <meta name="viewport" content="width=device-width, initial-scale=1.0">    <title>Space Invaders - Edició Final Absoluta Sincronitzada</title>    <script src="/socket.io/socket.io.js"></script>    <style>        body {            background-color: #050505; color: #fff; font-family: 'Courier New', Courier, monospace;            display: flex; flex-direction: column; align-items: center; justify-content: center;            min-height: 100vh; margin: 0; user-select: none;        }        .marcadors {            display: flex; gap: 40px; font-size: 18px; font-weight: bold; letter-spacing: 1px; margin-bottom: 10px; justify-content: space-between;        }        #menu-principal {            display: flex; gap: 20px; background: #111; padding: 20px; border: 2px solid #333; border-radius: 8px; max-width: 880px;        }        .columna-menu {            width: 270px; background: #1a1a1a; padding: 15px; border-radius: 6px; border: 1px solid #444;        }        .btn-accio {            background: #00ff00; color: #000; font-weight: bold; border: none; padding: 10px; width: 100%; cursor: pointer; font-family: monospace; margin-top: 10px; transition: background 0.1s;        }        .btn-accio:hover { background: #33ff33; }        .btn-accio:disabled { background: #444 !important; color: #888 !important; cursor: not-allowed; }        .grup-login { margin-bottom: 12px; text-align: left; }        .grup-login label { font-size: 11px; color: #aaa; display: block; margin-bottom: 4px; }        .input-login { background: #000; color: #00ff00; border: 1px solid #444; padding: 6px; width: 95%; font-family: monospace; }        .input-login:focus { border-color: #00ff00; outline: none; }        #pantalla-retro {            display: none; position: relative; border: 4px solid #333; box-shadow: 0 0 30px rgba(0, 255, 0, 0.15); border-radius: 4px;        }        #pantalla-retro::after {            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));            background-size: 100% 4px, 6px 100%; z-index: 10; pointer-events: none;        }        canvas { background: #020202; display: block; }
 #aviso-duel {
     display: none;
-    position: absolute;
-    z-index: 20;
-    inset: 40px 0 0 0;
+    position: fixed;
+    z-index: 1000;
+    inset: 0;
     align-items: center;
     justify-content: center;
-    flex-direction: column;
     text-align: center;
-    background: rgba(0, 0, 0, 0.88);
-    border: 3px solid #a855f7;
+    background: rgba(0, 0, 0, 0.72);
     color: #fff;
     font-family: 'Courier New', Courier, monospace;
     pointer-events: none;
+}
+#aviso-duel-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: min(440px, calc(100vw - 48px));
+    padding: 28px 20px;
+    background: #080808;
+    border: 3px solid #a855f7;
+    box-shadow: 0 0 32px rgba(168, 85, 247, 0.45);
 }
 #aviso-duel strong {
     color: #ffcc00;
@@ -118,42 +127,42 @@ window.originalBuscarDuelPong();
     }
 };
 
-window.mostrarMissatgePantalla = function (titol, detall = "", segons = 5) {
+let temporitzadorMissatge = null;
+window.mostrarMissatgePantalla = function (titol, detall = "", segons = 5, momentFinalitzacio = Date.now() + segons * 1000, enFinalitzar = null) {
     const avs = document.getElementById("aviso-duel");
     if (!avs) return;
+    clearTimeout(temporitzadorMissatge);
     avs.querySelector("strong").textContent = titol;
     document.getElementById("aviso-duel-oponent").textContent = detall;
     const instruccio = avs.querySelectorAll("span")[1];
-    if (instruccio) instruccio.textContent = "";
-    document.getElementById("comptador-duel").textContent = String(segons);
+    if (instruccio) instruccio.textContent = /PARTIDA TROBADA|COMENÇA/i.test(titol) ? "LA PARTIDA COMENÇA EN:" : "";
     avs.style.display = "flex";
-    let restant = segons;
-    const interval = setInterval(() => {
-        restant -= 1;
-        document.getElementById("comptador-duel").textContent = restant > 0 ? String(restant) : "JA!";
-        if (restant <= 0) {
-            clearInterval(interval);
-            setTimeout(() => { avs.style.display = "none"; }, 300);
+    const actualitzarComptador = () => {
+        const restant = Math.max(0, Math.ceil((momentFinalitzacio - Date.now()) / 1000));
+        document.getElementById("comptador-duel").textContent = String(restant);
+        if (restant === 0 || Date.now() >= momentFinalitzacio) {
+            avs.style.display = "none";
+            temporitzadorMissatge = null;
+            if (enFinalitzar) enFinalitzar();
+            return;
         }
-    }, 1000);
+        temporitzadorMissatge = setTimeout(actualitzarComptador, Math.min(100, momentFinalitzacio - Date.now()));
+    };
+    actualitzarComptador();
 };
 
-const alertOriginal = window.alert.bind(window);
 window.alert = function (missatge) {
-    const text = String(missatge);
-    if (/DUEL|PARTIDA TROBADA|PONG TROBADA/i.test(text)) {
-        window.mostrarMissatgePantalla(text.includes("GUANYAT") ? "VICTÒRIA!" : "RESULTAT DEL DUEL", text, 5);
-        return;
-    }
-    alertOriginal(text);
+    window.mostrarMissatgePantalla("AVÍS DEL JOC", String(missatge), 5);
 };
 </script>
 </head><body>    <div id="menu-principal">        <div class="columna-menu" style="text-align: center;">            <h2 style="color: #00ff00; margin-top: 0; font-size: 20px;">SPACE INVADERS</h2>                       <div id="zona-auth">                <div class="grup-login"><label>USUARI:</label><input type="text" id="auth-username" class="input-login" maxlength="12"></div>                <div class="grup-login"><label>CONTRASENYA:</label><input type="password" id="auth-password" class="input-login"></div>                <button class="btn-accio" onclick="peticioAuth('login')">INICIAR SESSIÓ</button>                <button class="btn-accio" style="background:#3b82f6; color:#fff;" onclick="peticioAuth('register')">CREAR COMPTE</button>            </div>            <div id="zona-usuari-actiu" style="display: none;">                <p style="color:#00ffcc; font-weight:bold; margin-bottom: 15px;">Hola, <span id="nom-perfil">...</span>!</p>                <p>El teu Rècord: <span id="menu-record" style="color: #ff3366;">0000</span></p>                <p style="font-size: 20px;">Monedes: <span id="menu-monedes" style="color: #ffcc00;">0</span> </p>                <p style="font-size: 12px; color: #0f0;" id="estado-conexion"> ONLINE</p>                               <div id="zona-selector-joc" style="display: none;">                    <p style="color: #ffaa00; font-weight: bold; margin-bottom: 10px;">TRIA EL JOC:</p>                    <button class="btn-accio" style="background: #00ff00; color: #000; margin-bottom: 8px;" onclick="seleccionarJoc('aliens')">SPACE INVADERS</button>                    <button class="btn-accio" style="background: #ff00ff; color: #fff; margin-bottom: 8px;" onclick="seleccionarJoc('pong')">PONG 1v1</button>                </div>                               <div id="zona-modes-aliens" style="display: none;">                    <button class="btn-accio" id="btn-jugar-principal" style="font-size: 18px; margin-top: 15px;" onclick="comencarPartida(false)">JUGAR SOL</button>                    <button class="btn-accio" id="btn-duel" style="background:#a855f7; color:#fff; font-size: 16px; margin-top: 10px;" onclick="buscarDuelSocket()">DUEL ONLINE</button>                    <button class="btn-accio" style="background: #888; color: #fff; font-size: 12px; margin-top: 8px;" onclick="volverAlSelectorJoc()">TORNAR</button>                </div>                               <div id="zona-modes-pong" style="display: none;">                    <button class="btn-accio" style="background: #ff00ff; color: #fff; font-size: 16px; margin-top: 15px;" onclick="buscarDuelPong()">BUSCAR OPONENT PONG</button>                    <button class="btn-accio" style="background: #888; color: #fff; font-size: 12px; margin-top: 8px;" onclick="volverAlSelectorJoc()">TORNAR</button>                </div>                               <button class="btn-accio" style="background:#ef4444; color:#fff; font-size:11px; margin-top:20px; padding:5px;" onclick="tancarSessio()">TANCAR SESSIO</button>            </div>        </div>        <div class="columna-menu">            <div class="scrollable-shop">                <div id="tienda-aliens" style="display: none;">                    <h3 style="color: #ffcc00; margin-top: 0; text-align: center;"> BOTIGA DE NAUS</h3>                    <div class="item-botiga"><b>Nau Clàssica</b> (Equipada)<br><span style="color:#aaa;">Nau original de 1978. Vides: 3</span><button class="btn-accio" id="btn-nau0" style="background:#666;" onclick="equiparNau(0)">EQUIPAR</button></div>                    <div class="item-botiga"><b>Nau VELOX</b> <span style="color:#00ffcc;">[Moviment +35%]</span><br> Preu: 30 <br><span style="color:#aaa;">Es mou més ràpid, mateix tret. Vides: 3</span><button class="btn-accio" id="btn-nau1" disabled onclick="comprarOEquipar(1, 30)">COMPRAR</button></div>                    <div class="item-botiga"><b>Nau TITAN</b> <span style="color:#ff3366;">[5 Vides]</span><br> Preu: 60 <br><span style="color:#aaa;">Més resistent, moviment clàssic. Vides: 5</span><button class="btn-accio" id="btn-nau2" disabled onclick="comprarOEquipar(2, 60)">COMPRAR</button></div>                    <div class="item-botiga"><b>Nau TELEDIRIGIDA</b> <span style="color:#ff69b4;">[Trets Guiats]</span><br> Preu: 90 <br><span style="color:#aaa;">Projectils teledirigits, moviment clàssic. Vides: 3</span><button class="btn-accio" id="btn-nau3" disabled onclick="comprarOEquipar(3, 90)">COMPRAR</button></div>                </div>                <div id="tienda-pong" style="display: none;">                    <h3 style="color: #ff00ff; margin-top: 0; text-align: center;"> BOTIGA DE COLORS PONG</h3>                    <div class="item-botiga"><b>Blanc</b> (Equipat)<br><span style="color:#aaa;">Color per defecte de la pala</span><button class="btn-accio" id="btn-color-fff" style="background:#666;" onclick="equiparColorPong('#ffffff')">EQUIPAR</button></div>                    <div class="item-botiga"><b>Or</b> <span style="color:#ffcc00;">[Premium]</span><br> Preu: 25 <br><span style="color:#aaa;">Color exclusiu dorat</span><button class="btn-accio" id="btn-color-ffd700" disabled onclick="comprarColorPong('#ffd700', 25)">COMPRAR</button></div>                    <div class="item-botiga"><b>Platejat</b> <span style="color:#c0c0c0;">[Premium]</span><br> Preu: 20 <br><span style="color:#aaa;">Color exclusiu platejat</span><button class="btn-accio" id="btn-color-c0c0c0" disabled onclick="comprarColorPong('#c0c0c0', 20)">COMPRAR</button></div>                    <div class="item-botiga"><b>Blau Neó</b> <span style="color:#00ff00;">[Neon]</span><br> Preu: 30 <br><span style="color:#aaa;">Color neó bleu fluo</span><button class="btn-accio" id="btn-color-0080ff" disabled onclick="comprarColorPong('#0080ff', 30)">COMPRAR</button></div>                    <div class="item-botiga"><b>Púrpura</b> <span style="color:#ff00ff;">[Neon]</span><br> Preu: 30 <br><span style="color:#aaa;">Color neó magenta/purple</span><button class="btn-accio" id="btn-color-ff00ff" disabled onclick="comprarColorPong('#ff00ff', 30)">COMPRAR</button></div>                    <div class="item-botiga"><b>Vermell Fluo</b> <span style="color:#ff0000;">[Neon]</span><br> Preu: 25 <br><span style="color:#aaa;">Color neó vermell</span><button class="btn-accio" id="btn-color-ff0000" disabled onclick="comprarColorPong('#ff0000', 25)">COMPRAR</button></div>                </div>            </div>        </div>        <div class="columna-menu">            <h3 id="titulo-ranking" style="color: #33ccff; margin-top: 0; text-align: center;"> TOP 10 GENERAL</h3>            <table class="tabla-ranking">                <thead><tr><th width="15%">Pos</th><th width="50%">Jugador</th><th id="th-ranking" width="35%">Punts</th></tr></thead>                <tbody id="cos-classificacio"><tr><td colspan="3" style="text-align:center; color:#ffaa00; font-size:11px;">INICIA SESSIÓ PER CARREGAR EL TOP 10.</td></tr></tbody>            </table>        </div>    </div>    <div id="pantalla-retro">        <div class="marcadors" style="padding: 10px; background: #000;">            <div>SCORE: <span id="punts" style="color: #00ff00;">0000</span></div>            <div id="marcador-duel" style="display:none; color: #a855f7; font-size: 14px; text-align: center;">                CARRERA 1v1!<br>PRIMER EN MATAR TOTS ELS ALIENS GUANYA            </div>            <div id="marcador-pong" style="display:none; color: #ff00ff; font-size: 14px; text-align: center;">                <span id="punts-pong-j1">0</span> vs <span id="punts-pong-j2">0</span>            </div>            <div><span id="joc-monedes" style="color: #ffcc00;">0</span>  | VIDES: <span id="joc-vides" style="color: #ff3366;">3</span></div>        </div>        <canvas id="invadersCanvas" width="600" height="440" style="display: none;"></canvas>        <canvas id="pongCanvas" width="600" height="400" style="display: none;"></canvas>
 <div id="aviso-duel">
-    <strong>PARTIDA TROBADA!</strong>
-    <span id="aviso-duel-oponent"></span>
-    <span>EL PRIMER EN NETEJAR L'ONADA GUANYA!</span>
-    <span id="comptador-duel" class="comptador-duel">5</span>
+    <div id="aviso-duel-panel">
+        <strong>PARTIDA TROBADA!</strong>
+        <span id="aviso-duel-oponent"></span>
+        <span>EL PRIMER EN NETEJAR L'ONADA GUANYA!</span>
+        <span id="comptador-duel" class="comptador-duel">5</span>
+    </div>
 </div>    </div>    <script>        const MEU_PC_SERVIDOR_URL = "";               // Connexió per WebSockets (Temps real)
         const socket = io({ autoConnect: false });        const canvas = document.getElementById("invadersCanvas");        const ctx = canvas.getContext("2d");        let audioCtx = null;        function ferSo(frequencia, tipus, durada, volum = 0.1) {            try {                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();                if (audioCtx.state === 'suspended') audioCtx.resume();                const osc = audioCtx.createOscillator(); const gainNode = audioCtx.createGain();                osc.type = tipus; osc.frequency.setValueAtTime(frequencia, audioCtx.currentTime);                gainNode.gain.setValueAtTime(volum, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + durada);                osc.connect(gainNode); gainNode.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + durada);            } catch(e) {}        }               function pararMusica() {            try {                if (audioCtx && audioCtx.state === 'running') {                    audioCtx.suspend();                }            } catch(e) {}        }        let tonsRitme = [170, 150, 130, 110]; let indexRitme = 0; let tempsUltimPas = 0; let intervalPasEnemic = 500;        let usuariSessio = ""; let puntuacio = 0; let record = 0; let monedes = 0; let nauEquipada = 0; let nausComprades = [true, false, false, false];               // MODO OFFLINE
         let modoOffline = false;        let servidorDisponible = false;               function cargarDatosLocal() {            record = parseInt(localStorage.getItem('record_local')) || 0;            monedes = parseInt(localStorage.getItem('monedes_local')) || 0;            nauEquipada = parseInt(localStorage.getItem('nauEquipada_local')) || 0;            nausComprades = JSON.parse(localStorage.getItem('nausComprades_local')) || [true, false, false, false];        }               function guardarDatosLocal() {            localStorage.setItem('record_local', record);            localStorage.setItem('monedes_local', monedes);            localStorage.setItem('nauEquipada_local', nauEquipada);            localStorage.setItem('nausComprades_local', JSON.stringify(nausComprades));        }               async function verificarConexion() {            try {                const response = await fetch(`${MEU_PC_SERVIDOR_URL}/api/ranking`, {                    method: 'GET',                    headers: {  },                    timeout: 3000                });                servidorDisponible = response.ok;                modoOffline = !servidorDisponible;            } catch (e) {                servidorDisponible = false;                modoOffline = true;            }            actualitzarModoUI();        }               function actualitzarModoUI() {            const elemento = document.getElementById('estado-conexion');            if (modoOffline) {                if (elemento) elemento.innerText = ' MODO OFFLINE';                document.getElementById('btn-duel').disabled = false;                document.getElementById('btn-duel').style.opacity = '1';                document.getElementById('btn-duel').innerText = ' DUEL OFFLINE';                // Ocultar opciones de Pong
@@ -212,6 +221,24 @@ window.comencarPartida = function (...args) {
     return comencarPartidaOriginal(...args);
 };
 window.comencarPong = comencarPong;
+socket.on("pong_encontrado", (data) => {
+    const momentInici = Number(data.startAt || Date.now() + 5000);
+    enPong = false;
+    clearInterval(pongEmitInterval);
+    cancelAnimationFrame(pongAnimId);
+    pongBola = { x: 300, y: 200, width: 8, height: 8, vx: 0, vy: 0 };
+    pongLoop();
+    window.mostrarMissatgePantalla("PARTIDA PONG TROBADA!", `Jugues contra: ${data.oponente}`, 5, momentInici, () => {
+        enPong = true;
+        pongEmitInterval = setInterval(() => {
+            socket.emit("pong_movimiento", {
+                roomId: pongRoomId,
+                pala_y: pongPalJugador.y,
+                username: usuariSessio
+            });
+        }, 30);
+    });
+});
 window.carregarRanquingGlobal = carregarRanquingGlobal;
 window.carregarRanquingPong = carregarRanquingPong;
 document.getElementById("cos-classificacio").innerHTML = `<tr><td colspan="3" style="text-align:center; color:#ffaa00; font-size:11px;">INICIA SESSIÓ PER VEURE EL RÀNQUING.</td></tr>`;
