@@ -144,14 +144,17 @@ if (tipus === "register") {
     alert("Compte creat! Ara pots iniciar sessio.");
 } else {
     localStorage.setItem("space_invaders_token", data.token);
-    window.usuariSessio = data.username;
-    window.record = data.record;
-    window.monedes = data.monedes;
-    window.nauEquipada = data.nauEquipada;
-    window.nausComprades = data.nausComprades;
-    window.pongDuelWins = data.pongDuelWins || 0;
-    window.pongColoresComprados = data.pongColoresComprados || ["#ffffff"];
-    window.pongColorEquipado = data.pongColorEquipado || "#ffffff";
+    usuariSessio = data.username;
+    record = data.record;
+    monedes = data.monedes;
+    nauEquipada = data.nauEquipada;
+    nausComprades = data.nausComprades;
+    pongDuelWins = data.pongDuelWins || 0;
+    pongColoresComprados = data.pongColoresComprados || ["#ffffff"];
+    pongColorEquipado = data.pongColorEquipado || "#ffffff";
+    modoOffline = false;
+    servidorDisponible = true;
+    actualitzarModoUI();
     if (typeof window.actualitzarInterficieMenu === "function") {
         window.actualitzarInterficieMenu();
     } else {
@@ -162,9 +165,9 @@ if (tipus === "register") {
         document.getElementById("menu-record").textContent = String(data.record || 0).padStart(4, "0");
         document.getElementById("menu-monedes").textContent = data.monedes || 0;
     }
-    if (window.socket) {
-        window.socket.auth = { token: data.token };
-        if (!window.socket.connected) window.socket.connect();
+    if (typeof socket !== "undefined") {
+        socket.auth = { token: data.token };
+        if (!socket.connected) socket.connect();
     }
 }
     } catch (error) {
@@ -365,6 +368,7 @@ adminDialog.innerHTML = `
                 <p class="admin-note">Selecciona un compte per posar el seu saldo a zero. Si està connectat, el canvi s'aplicarà al moment.</p>
                 <select id="admin-player-select" aria-label="Selecciona un jugador"></select>
                 <button class="btn-accio" id="admin-reset-coins">REINICIAR MONEDES</button>
+                <button class="btn-accio" id="admin-reset-ships" style="background:#713f12;color:#fff;">REINICIAR NAUS</button>
                 <div id="admin-status" role="status" aria-live="polite"></div>
             </section>
         </div>

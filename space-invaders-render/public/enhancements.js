@@ -401,6 +401,41 @@
     socket.on("wave_reward_denied", (data) => {
         document.getElementById("social-status").textContent = data.error;
     });
+    socket.on("admin_ships_reset", (data) => {
+        if (data.username !== usuariSessio) return;
+        nauEquipada = data.nauEquipada;
+        nausComprades = data.nausComprades;
+        guardarDatosLocal();
+        updateShopCatalog();
+        const status = document.getElementById("shop-status");
+        if (status) status.textContent = "Hangar reiniciat per l'administració.";
+    });
+    document.getElementById("admin-reset-ships").addEventListener("click", async () => {
+        const username = document.getElementById("admin-player-select").value;
+        if (!username || !confirm(`Vols reiniciar les naus de ${username}? Només conservarà la nau clàssica.`)) return;
+
+        const button = document.getElementById("admin-reset-ships");
+        const status = document.getElementById("admin-status");
+        button.disabled = true;
+        status.textContent = "Reiniciant naus...";
+        try {
+            const response = await fetch("/api/admin/reset-ships", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${localStorage.getItem("space_invaders_token")}`
+                },
+                body: JSON.stringify({ username })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || "No s'han pogut reiniciar les naus.");
+            status.textContent = `Hangar de ${result.username} reiniciat correctament.`;
+        } catch (error) {
+            status.textContent = error.message;
+        } finally {
+            button.disabled = false;
+        }
+    });
 
     const previousMenuUpdate = actualitzarInterficieMenu;
     actualitzarInterficieMenu = function () {
