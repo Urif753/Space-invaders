@@ -65,6 +65,65 @@
         .admin-footer { display: flex; justify-content: space-between; gap: 10px; margin-top: 16px; }
         .admin-footer button { width: auto; min-width: 155px; margin: 0; border-radius: 6px; }
         @media (max-width: 620px) { .admin-layout { grid-template-columns: 1fr; } .admin-footer { flex-direction: column; } .admin-footer button { width: 100%; } }
+        .retro-chat { display: flex; flex-direction: column; min-height: 430px; color: #d7ffd7; text-align: left; }
+        .retro-chat-header { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid #185a27; color: #00ff66; font-size: 11px; letter-spacing: 1px; }
+        #chat-connection { color: #888; }
+        .retro-chat-feed { display: flex; flex-direction: column; gap: 7px; height: 190px; overflow-y: auto; margin: 8px 0; padding: 8px; border: 1px solid #24502d; background: #050a06; font-size: 11px; }
+        .chat-line { display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+        .chat-name { color: #00ff99; }
+        .chat-system .chat-name, .chat-system .chat-text { color: #ffcc00; }
+        .chat-reaction .chat-text { color: #ff69b4; font-size: 16px; }
+        .retro-reactions { display: flex; gap: 5px; }
+        .retro-reactions button { flex: 1; padding: 6px 2px; border: 1px solid #36653b; background: #101b11; color: #caffca; font: bold 10px monospace; cursor: pointer; }
+        .retro-reactions button:disabled, .retro-chat-form button:disabled { opacity: .4; cursor: not-allowed; }
+        .retro-chat-form { display: flex; gap: 5px; margin-top: 7px; }
+        .retro-chat-form input { min-width: 0; flex: 1; padding: 8px; border: 1px solid #36653b; background: #050a06; color: #caffca; font: 11px monospace; }
+        .retro-chat-form button { width: 38px; border: 1px solid #00aa44; background: #075522; color: #fff; cursor: pointer; }
+        .retro-section-title { margin: 14px 0 7px; color: #00ff99; font-size: 10px; letter-spacing: 1px; }
+        .spectator-list { display: flex; flex-direction: column; gap: 6px; max-height: 115px; overflow-y: auto; }
+        .spectator-row { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 6px; border: 1px solid #263d2a; background: #090e0a; font-size: 10px; }
+        .spectator-players { overflow-wrap: anywhere; color: #ddd; }
+        .spectator-watch { padding: 5px 7px; border: 1px solid #a855f7; background: #241138; color: #e9d5ff; font: bold 10px monospace; cursor: pointer; }
+        .spectator-watch:disabled { opacity: .4; cursor: not-allowed; }
+        .retro-muted { color: #777; font-size: 10px; }
+        .social-status { min-height: 15px; margin-top: 5px; color: #ffcc00; font-size: 10px; overflow-wrap: anywhere; }
+        .shop-open { border: 1px solid #ffcc00; background: #664400; color: #fff; }
+        .retro-dialog { width: min(1050px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 0; overflow: auto; border: 2px solid #00ff66; background: #050805; color: #eaffea; box-shadow: 0 0 35px rgba(0,255,80,.25); font-family: 'Courier New', Courier, monospace; }
+        .retro-dialog::backdrop { background: rgba(0,0,0,.84); backdrop-filter: blur(3px); }
+        .retro-window { padding: clamp(12px, 3vw, 24px); }
+        .retro-window-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #185a27; }
+        .retro-kicker { margin: 0 0 5px; color: #00ff66; font-size: 10px; letter-spacing: 2px; }
+        .retro-window-header h2 { margin: 0; color: #ffcc00; font-size: clamp(20px,4vw,28px); }
+        .retro-close { width: 36px; height: 36px; border: 1px solid #557455; background: #0c140d; color: #fff; cursor: pointer; font: bold 16px monospace; }
+        .shop-tabs { display: flex; gap: 8px; margin: 14px 0; }
+        .shop-tab { padding: 9px 14px; border: 1px solid #315b37; background: #0b130c; color: #aaa; font: bold 11px monospace; cursor: pointer; }
+        .shop-tab.active { border-color: #00ff66; background: #103019; color: #afffb7; }
+        .ship-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+        .ship-grid[hidden], .pong-color-grid[hidden] { display: none; }
+        .ship-card { display: flex; flex-direction: column; min-width: 0; padding: 12px; border: 1px solid #28512f; background: linear-gradient(145deg,#101810,#060906); }
+        .ship-sprite { display: grid; place-items: center; height: 48px; border-bottom: 1px dashed #29432c; font-size: 36px; text-shadow: 0 0 12px currentColor; }
+        .ship-card h3 { margin: 10px 0 3px; color: #eaffea; font-size: 12px; }
+        .ship-price { margin: 0 0 6px; color: #ffcc00; font-size: 10px; }
+        .ship-weapon { min-height: 30px; margin: 0 0 7px; color: #aaa; font-size: 10px; }
+        .ship-stats { display: grid; gap: 5px; margin-bottom: 10px; }
+        .ship-stat { display: flex; align-items: center; gap: 6px; color: #888; font-size: 8px; }
+        .ship-stat > span:first-child { width: 58px; flex: 0 0 58px; }
+        .ship-meter { height: 5px; flex: 1; overflow: hidden; background: #1d281e; }
+        .ship-meter-fill { display: block; height: 100%; box-shadow: 0 0 5px currentColor; }
+        .ship-action { margin-top: auto; padding: 8px 4px; border: 1px solid #00aa44; background: #075522; color: #fff; font: bold 10px monospace; cursor: pointer; }
+        .ship-action.owned { border-color: #3775a5; background: #12304a; }
+        .ship-action:disabled { border-color: #444; background: #222; color: #777; cursor: not-allowed; }
+        .pong-color-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+        .pong-color-card { display: grid; grid-template-columns: 34px 1fr; gap: 6px 10px; align-items: center; padding: 12px; border: 1px solid #28512f; background: #0b100b; }
+        .pong-color-card .ship-action { grid-column: 1 / -1; }
+        .pong-color-chip { width: 28px; height: 28px; border: 1px solid #888; box-shadow: 0 0 9px currentColor; }
+        .pong-color-card strong { font-size: 11px; }
+        .retro-shop-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid #185a27; color: #ffcc00; font-size: 12px; }
+        .retro-close-button { padding: 8px 14px; border: 1px solid #555; background: #181818; color: #fff; font: bold 10px monospace; cursor: pointer; }
+        .spectator-bar { position: absolute; z-index: 20; top: 54px; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; border-block: 1px solid #a855f7; background: rgba(10,4,18,.94); color: #e9d5ff; font-size: 10px; }
+        .spectator-bar[hidden] { display: none; }
+        .spectator-bar button { border: 1px solid #a855f7; background: #241138; color: #fff; font: bold 10px monospace; cursor: pointer; }
+        @media (max-width: 760px) { .ship-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .pong-color-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
     </style>
 <script>
 window.peticioAuth = async function (tipus) {
@@ -429,5 +488,5 @@ new MutationObserver(actualitzarAdminPanel).observe(document.getElementById("nom
     subtree: true
 });
 actualitzarAdminPanel();
-    </script></body></html>
+    </script><script src="/enhancements.js" defer></script></body></html>
 
