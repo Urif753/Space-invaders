@@ -26,6 +26,15 @@ const httpServer = http.createServer(app);
 const io = new Server(httpServer);
 const queues = { aliens: [], pong: [] };
 const rooms = new Map();
+const chatHistory = [];
+const shipPrices = [0, 50, 120, 200, 350, 500, 750, 1200];
+const pongColorPrices = new Map([
+  ["#ffffff", 0], ["#ffd700", 25], ["#c0c0c0", 20],
+  ["#0080ff", 30], ["#ff00ff", 30], ["#ff0000", 25]
+]);
+const quickReactions = new Set(["GG", "200 IQ", "😂", "👽"]);
+const waveReward = 7;
+const duelReward = 18;
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "10kb" }));
@@ -36,15 +45,49 @@ app.use((req, res, next) => {
 });
 
 function publicProfile(row) {
+  const nausComprades = Array.isArray(row.naus_comprades) ? row.naus_comprades.slice(0, 8) : [true];
+  while (nausComprades.length < 8) nausComprades.push(false);
+  nausComprades[0] = true;
   return {
     username: row.username,
     record: row.record,
     monedes: row.monedes,
     nauEquipada: row.nau_equipada,
-    nausComprades: row.naus_comprades,
+    nausComprades,
     pongDuelWins: row.pong_duel_wins,
     pongColoresComprados: row.pong_colores_comprados,
     pongColorEquipado: row.pong_color_equipado
+  };
+}
+
+function publishChatMessage(message) {
+  const entry = { ...message, at: Date.now() };
+  chatHistory.push(entry);
+  if (chatHistory.length > 100) chatHistory.shift();
+  io.emit("chat_message", entry);
+}
+
+function livePongRooms() {
+  return [...rooms.values()]
+    .filter((room) => room.game === "pong" && !room.finished)
+    .map((room) => ({
+      roomId: room.id,
+      players: room.names,
+      started: room.started,
+      spectators: room.spectators.size
+    }));
+}
+
+function publishLivePongRooms() {
+  io.emit("live_pong_rooms", livePongRooms());
+}
+
+function pongState(room) {
+  return {
+    bola: { ...room.ball, width: 8, height: 8 },
+    puntos: { ...room.points },
+    pala1: { y: room.paddles[1] },
+    pala2: { y: room.paddles[2] }
   };
 }
 
@@ -90,12 +133,6 @@ function validatePassword(value) {
 
 function boundedInteger(value, fallback, max = 10000000) {
   return Number.isInteger(value) && value >= 0 && value <= max ? value : fallback;
-}
-
-function validColors(value) {
-  const allowed = new Set(["#ffffff", "#ffd700", "#c0c0c0", "#0080ff", "#ff00ff", "#ff0000"]);
-  return Array.isArray(value) && value.length <= allowed.size &&
-    value.every((color) => typeof color === "string" && allowed.has(color));
 }
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -218,40 +255,116 @@ app.post("/api/save-user", requireAuth, async (req, res) => {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return res.status(400).json({ error: "Les dades del perfil no son valides." });
   }
-  const nauEquipada = boundedInteger(body.nauEquipada, -1, 3);
   const record = boundedInteger(body.record, -1);
-  const monedes = boundedInteger(body.monedes, -1);
-  const nausComprades = body.nausComprades;
-  const colors = body.pongColoresComprados;
   const colorEquipat = body.pongColorEquipado;
-  if (nauEquipada < 0 || !Array.isArray(nausComprades) || nausComprades.length !== 4 ||
-      !nausComprades.every((value) => typeof value === "boolean") || !nausComprades[nauEquipada] ||
-      record < 0 || monedes < 0 || !validColors(colors) || !colors.includes(colorEquipat)) {
+  if (record < 0 || typeof colorEquipat !== "string" || !pongColorPrices.has(colorEquipat)) {
     return res.status(400).json({ error: "Les dades del perfil no son valides." });
   }
+
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query("BEGIN");
+    const previous = await client.query(
+      "SELECT record FROM players WHERE username = $1 FOR UPDATE",
+      [req.player.username]
+    );
+    if (!previous.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "No s'ha trobat el compte." });
+    }
+
+    await client.query(
+      `UPDATE players
+          SET record = GREATEST(record, $2),
+              pong_color_equipado = CASE
+                WHEN pong_colores_comprados ? $3 THEN $3 ELSE pong_color_equipado
+              END
+        WHERE username = $1`,
+      [req.player.username, record, colorEquipat]
+    );
+    await client.query("COMMIT");
+    if (record > previous.rows[0].record) {
+      publishChatMessage({
+        type: "system",
+        text: `${req.player.username} ha superat el seu rècord: ${record} punts.`
+      });
+    }
+    return res.json({ ok: true });
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error("No s'ha pogut desfer el desat del perfil:", rollbackError);
+    }
+    console.error("No s'han pogut desar les dades:", error);
+    return res.status(500).json({ error: "No s'han pogut desar les dades." });
+  } finally {
+    if (client) client.release();
+  }
+});
+
+app.post("/api/shop/ship", requireAuth, async (req, res) => {
+  const shipId = boundedInteger(req.body?.shipId, -1, shipPrices.length - 1);
+  if (shipId < 0) return res.status(400).json({ error: "La nau seleccionada no es valida." });
+
+  const price = shipPrices[shipId];
+  try {
+    const result = await pool.query(
+      `UPDATE players
+          SET monedes = CASE WHEN naus_comprades->>$2 = 'true' THEN monedes ELSE monedes - $3 END,
+              naus_comprades = jsonb_set(naus_comprades, ARRAY[$2::text], 'true'::jsonb, true),
+              nau_equipada = $2
+        WHERE username = $1
+          AND (naus_comprades->>$2 = 'true' OR monedes >= $3)
+        RETURNING username, record, monedes, nau_equipada, naus_comprades,
+                  pong_duel_wins, pong_colores_comprados, pong_color_equipado`,
+      [req.player.username, shipId, price]
+    );
+    if (result.rowCount) return res.json(publicProfile(result.rows[0]));
+
+    const player = await pool.query(
+      "SELECT username FROM players WHERE username = $1",
+      [req.player.username]
+    );
+    if (!player.rowCount) return res.status(404).json({ error: "No s'ha trobat el compte." });
+    return res.status(409).json({ error: "No tens prou monedes per comprar aquesta nau." });
+  } catch (error) {
+    console.error("No s'ha pogut comprar o equipar la nau:", error);
+    return res.status(500).json({ error: "No s'ha pogut comprar o equipar la nau." });
+  }
+});
+
+app.post("/api/shop/pong-color", requireAuth, async (req, res) => {
+  const color = req.body?.color;
+  if (typeof color !== "string" || !pongColorPrices.has(color)) {
+    return res.status(400).json({ error: "El color seleccionat no es valid." });
+  }
+  const price = pongColorPrices.get(color);
 
   try {
     const result = await pool.query(
       `UPDATE players
-          SET record = $2, monedes = $3, nau_equipada = $4, naus_comprades = $5,
-              pong_colores_comprados = $6, pong_color_equipado = $7
+          SET monedes = CASE WHEN pong_colores_comprados ? $2 THEN monedes ELSE monedes - $3 END,
+              pong_colores_comprados = CASE
+                WHEN pong_colores_comprados ? $2 THEN pong_colores_comprados
+                ELSE pong_colores_comprados || to_jsonb($2::text)
+              END,
+              pong_color_equipado = $2
         WHERE username = $1
-        RETURNING username`,
-      [
-        req.player.username,
-        record,
-        monedes,
-        nauEquipada,
-        JSON.stringify(nausComprades),
-        JSON.stringify(colors),
-        colorEquipat
-      ]
+          AND (pong_colores_comprados ? $2 OR monedes >= $3)
+        RETURNING username, record, monedes, nau_equipada, naus_comprades,
+                  pong_duel_wins, pong_colores_comprados, pong_color_equipado`,
+      [req.player.username, color, price]
     );
-    if (!result.rowCount) return res.status(404).json({ error: "No s'ha trobat el compte." });
-    return res.json({ ok: true });
+    if (result.rowCount) return res.json(publicProfile(result.rows[0]));
+
+    const player = await pool.query("SELECT username FROM players WHERE username = $1", [req.player.username]);
+    if (!player.rowCount) return res.status(404).json({ error: "No s'ha trobat el compte." });
+    return res.status(409).json({ error: "No tens prou monedes per comprar aquest color." });
   } catch (error) {
-    console.error("No s'han pogut desar les dades:", error);
-    return res.status(500).json({ error: "No s'han pogut desar les dades." });
+    console.error("No s'ha pogut comprar o equipar el color de Pong:", error);
+    return res.status(500).json({ error: "No s'ha pogut comprar o equipar el color." });
   }
 });
 
@@ -292,6 +405,14 @@ function removeFromQueue(socket) {
 function queuePlayer(socket, game) {
   removeFromQueue(socket);
   if ([...rooms.values()].some((room) => room.players.includes(socket.id))) return;
+  let stoppedWatching = false;
+  for (const room of rooms.values()) {
+    if (room.spectators.delete(socket.id)) {
+      socket.leave(room.id);
+      stoppedWatching = true;
+    }
+  }
+  if (stoppedWatching) publishLivePongRooms();
   const queue = queues[game];
   const opponentIndex = queue.findIndex((id) => {
     const candidate = io.sockets.sockets.get(id);
@@ -313,6 +434,7 @@ function queuePlayer(socket, game) {
     game,
     players: [opponent.id, socket.id],
     names: [opponent.data.username, socket.data.username],
+    spectators: new Set(),
     paddles: { 1: 160, 2: 160 },
     ball: { x: 300, y: 200, vx: 0, vy: 0 },
     startAt,
@@ -336,7 +458,12 @@ function queuePlayer(socket, game) {
     opponent.emit("pong_encontrado", { roomId, jugador: 1, oponente: room.names[1], startAt });
     socket.emit("pong_encontrado", { roomId, jugador: 2, oponente: room.names[0], startAt });
     room.timer = setInterval(() => updatePong(room), 30);
+    publishLivePongRooms();
   }
+  publishChatMessage({
+    type: "system",
+    text: `Nova partida ${game === "pong" ? "de Pong" : "d'Invaders"}: ${room.names.join(" vs ")}.`
+  });
 }
 
 function finishRoom(room, event, payload) {
@@ -345,10 +472,36 @@ function finishRoom(room, event, payload) {
   if (room.timer) clearInterval(room.timer);
   io.to(room.id).emit(event, payload);
   rooms.delete(room.id);
+  const winner = payload?.guanyador || payload?.ganador;
+  if (typeof winner === "string" && room.names.includes(winner)) {
+    pool.query(
+      `UPDATE players
+          SET monedes = monedes + $2,
+              pong_duel_wins = pong_duel_wins + CASE WHEN $3 THEN 1 ELSE 0 END
+        WHERE username = $1
+        RETURNING monedes`,
+      [winner, duelReward, room.game === "pong"]
+    ).then((result) => {
+      if (!result.rowCount) return;
+      for (const playerSocket of io.sockets.sockets.values()) {
+        if (playerSocket.data.username === winner) {
+          playerSocket.emit("duel_reward", { monedes: result.rows[0].monedes, reward: duelReward });
+        }
+      }
+    }).catch((error) => console.error("No s'ha pogut lliurar la recompensa del duel:", error));
+    publishChatMessage({ type: "system", text: `${winner} ha guanyat el duel i rep ${duelReward} monedes.` });
+  } else {
+    publishChatMessage({ type: "system", text: "La partida ha acabat sense guanyador." });
+  }
   for (const id of room.players) {
     const playerSocket = io.sockets.sockets.get(id);
     if (playerSocket) playerSocket.leave(room.id);
   }
+  for (const id of room.spectators) {
+    const spectatorSocket = io.sockets.sockets.get(id);
+    if (spectatorSocket) spectatorSocket.leave(room.id);
+  }
+  publishLivePongRooms();
 }
 
 function updatePong(room) {
@@ -359,6 +512,7 @@ function updatePong(room) {
     room.started = true;
     ball.vx = Math.random() < 0.5 ? -5 : 5;
     ball.vy = 3;
+    publishLivePongRooms();
   }
   ball.x += ball.vx;
   ball.y += ball.vy;
@@ -387,18 +541,11 @@ function updatePong(room) {
     if (room.points[scorer] >= 5) {
       const winner = room.names[scorer - 1];
       finishRoom(room, "pong_fin", { ganador: winner });
-      pool.query("UPDATE players SET pong_duel_wins = pong_duel_wins + 1 WHERE username = $1", [winner])
-        .catch((error) => console.error("No s'ha pogut actualitzar el ranking de Pong:", error));
       return;
     }
   }
 
-  io.to(room.id).emit("pong_estado", {
-    bola: { ...ball, width: 8, height: 8 },
-    puntos: { ...room.points },
-    pala1: { y: room.paddles[1] },
-    pala2: { y: room.paddles[2] }
-  });
+  io.to(room.id).emit("pong_estado", pongState(room));
 }
 
 io.use((socket, next) => {
@@ -413,6 +560,88 @@ io.use((socket, next) => {
 });
 
 io.on("connection", (socket) => {
+  socket.emit("chat_history", chatHistory);
+  socket.emit("live_pong_rooms", livePongRooms());
+
+  socket.on("chat_message", (data = {}) => {
+    if (!data || typeof data.text !== "string") return;
+    const text = data.text.trim();
+    const now = Date.now();
+    if (!text || text.length > 240) return socket.emit("chat_error", "El missatge ha de tenir entre 1 i 240 caracters.");
+    if (now - (socket.data.lastChatAt || 0) < 900) {
+      return socket.emit("chat_error", "Espera un moment abans d'enviar un altre missatge.");
+    }
+    socket.data.lastChatAt = now;
+    publishChatMessage({ type: "player", username: socket.data.username, text });
+  });
+
+  socket.on("chat_reaction", (data = {}) => {
+    if (!data || !quickReactions.has(data.reaction)) return;
+    const now = Date.now();
+    if (now - (socket.data.lastChatAt || 0) < 900) return;
+    socket.data.lastChatAt = now;
+    publishChatMessage({
+      type: "reaction",
+      username: socket.data.username,
+      text: data.reaction
+    });
+  });
+
+  socket.on("list_live_pong", () => socket.emit("live_pong_rooms", livePongRooms()));
+
+  socket.on("watch_pong", (data = {}) => {
+    if (!data || typeof data.roomId !== "string") return;
+    if ([...rooms.values()].some((room) => room.players.includes(socket.id))) {
+      return socket.emit("watch_error", "No pots visionar una partida mentre estàs jugant.");
+    }
+    const room = rooms.get(data.roomId);
+    if (!room || room.game !== "pong" || room.finished || room.players.includes(socket.id)) {
+      return socket.emit("watch_error", "Aquesta partida ja no es pot visionar.");
+    }
+    for (const currentRoom of rooms.values()) {
+      if (currentRoom.spectators.delete(socket.id)) socket.leave(currentRoom.id);
+    }
+    room.spectators.add(socket.id);
+    socket.join(room.id);
+    socket.emit("pong_spectating", {
+      roomId: room.id,
+      players: room.names,
+      state: pongState(room)
+    });
+    publishLivePongRooms();
+  });
+
+  socket.on("stop_watching", () => {
+    for (const room of rooms.values()) {
+      if (!room.spectators.delete(socket.id)) continue;
+      socket.leave(room.id);
+    }
+    publishLivePongRooms();
+  });
+
+  socket.on("claim_wave_reward", async () => {
+    const now = Date.now();
+    if (now - (socket.data.lastWaveClaimAt || 0) < 10000) return;
+    socket.data.lastWaveClaimAt = now;
+    try {
+      const result = await pool.query(
+        `UPDATE players
+            SET monedes = monedes + $2, last_wave_reward_at = NOW()
+          WHERE username = $1
+            AND (last_wave_reward_at IS NULL OR last_wave_reward_at < NOW() - INTERVAL '15 seconds')
+          RETURNING monedes`,
+        [socket.data.username, waveReward]
+      );
+      if (!result.rowCount) {
+        return socket.emit("wave_reward_denied", { error: "Espera uns segons abans de reclamar una altra recompensa." });
+      }
+      socket.emit("wallet_updated", { monedes: result.rows[0].monedes, reward: waveReward });
+    } catch (error) {
+      console.error("No s'ha pogut lliurar la recompensa de l'onada:", error);
+      socket.emit("wave_reward_denied", { error: "No s'ha pogut lliurar la recompensa." });
+    }
+  });
+
   socket.on("buscar_duel", () => queuePlayer(socket, "aliens"));
   socket.on("buscar_pong", () => queuePlayer(socket, "pong"));
   socket.on("cancelar_cerca", () => removeFromQueue(socket));
@@ -453,6 +682,9 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     removeFromQueue(socket);
     for (const room of rooms.values()) {
+      if (room.spectators.delete(socket.id)) publishLivePongRooms();
+    }
+    for (const room of rooms.values()) {
       const playerIndex = room.players.indexOf(socket.id);
       if (playerIndex === -1) continue;
       const winner = room.names[1 - playerIndex];
@@ -472,12 +704,44 @@ async function start() {
       record INTEGER NOT NULL DEFAULT 0,
       monedes INTEGER NOT NULL DEFAULT 0,
       nau_equipada INTEGER NOT NULL DEFAULT 0,
-      naus_comprades JSONB NOT NULL DEFAULT '[true, false, false, false]'::jsonb,
+      naus_comprades JSONB NOT NULL DEFAULT '[true, false, false, false, false, false, false, false]'::jsonb,
       pong_duel_wins INTEGER NOT NULL DEFAULT 0,
       pong_colores_comprados JSONB NOT NULL DEFAULT '["#ffffff"]'::jsonb,
-      pong_color_equipado TEXT NOT NULL DEFAULT '#ffffff'
+      pong_color_equipado TEXT NOT NULL DEFAULT '#ffffff',
+      last_wave_reward_at TIMESTAMPTZ
     )
   `);
+  await pool.query("ALTER TABLE players ADD COLUMN IF NOT EXISTS last_wave_reward_at TIMESTAMPTZ");
+  await pool.query(
+    `ALTER TABLE players
+       ALTER COLUMN naus_comprades
+       SET DEFAULT '[true, false, false, false, false, false, false, false]'::jsonb`
+  );
+  await pool.query(
+    `UPDATE players
+        SET naus_comprades = jsonb_build_array(
+              COALESCE(naus_comprades -> 0, 'true'::jsonb),
+              COALESCE(naus_comprades -> 1, 'false'::jsonb),
+              'false'::jsonb,
+              COALESCE(naus_comprades -> 2, 'false'::jsonb),
+              'false'::jsonb,
+              'false'::jsonb,
+              COALESCE(naus_comprades -> 3, 'false'::jsonb),
+              'false'::jsonb
+            ),
+            nau_equipada = CASE nau_equipada WHEN 2 THEN 3 WHEN 3 THEN 6 ELSE nau_equipada END
+      WHERE jsonb_typeof(naus_comprades) = 'array'
+        AND jsonb_array_length(naus_comprades) = 4`
+  );
+  await pool.query(
+    `UPDATE players AS player
+        SET naus_comprades = (
+          SELECT jsonb_agg(COALESCE(player.naus_comprades -> ship_index, 'false'::jsonb) ORDER BY ship_index)
+            FROM generate_series(0, 7) AS indices(ship_index)
+        )
+      WHERE jsonb_typeof(naus_comprades) = 'array'
+        AND jsonb_array_length(naus_comprades) < 8`
+  );
   httpServer.listen(port, "0.0.0.0", () => {
     console.log(`Servidor actiu al port ${port}`);
   });

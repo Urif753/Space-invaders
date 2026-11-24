@@ -30,3 +30,11 @@ Obre `http://localhost:10000`. La taula de jugadors es crea automàticament al p
 - Les contrasenyes s'emmagatzemen amb hash bcrypt; el servidor crea sessions signades i comprova la identitat en les crides a l'API i als WebSockets.
 - Els serveis gratuïts de Render poden tenir limitacions, aturar-se per inactivitat o estar subjectes a expiració. Comprova els plans i la retenció de PostgreSQL al teu compte de Render abans d'usar-lo per conservar comptes a llarg termini.
 - El registre nou requereix una contrasenya de 8 caràcters com a mínim.
+
+## Funcions del joc
+
+- Xat global en temps real al menú, amb reaccions ràpides i avisos de rècords i partides noves.
+- Economia: 7 monedes per onada completada i 18 monedes per guanyar un duel en línia. Les compres i les recompenses s'actualitzen al servidor.
+- Botiga retro amb vuit naus, habilitats diferents i una botiga de colors per a Pong. Als duels d'Invaders, els dos jugadors utilitzen la nau clàssica.
+- Mode espectador de Pong: es poden veure les partides en directe, però els espectadors no poden moure les pales.
+- Panell d'administració exclusiu del compte `URIF753`, amb llista de jugadors connectats i reinici de monedes.
