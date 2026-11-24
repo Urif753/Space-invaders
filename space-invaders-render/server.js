@@ -250,6 +250,39 @@ app.post("/api/admin/reset-coins", requireAuth, requireAdmin, async (req, res) =
   }
 });
 
+app.post("/api/admin/reset-ships", requireAuth, requireAdmin, async (req, res) => {
+  const username = typeof req.body?.username === "string"
+    ? req.body.username.trim().toUpperCase()
+    : "";
+  if (!validateUsername(username)) {
+    return res.status(400).json({ error: "El nom del jugador no es valid." });
+  }
+
+  const nausComprades = [true, false, false, false, false, false, false, false];
+  try {
+    const result = await pool.query(
+      `UPDATE players
+          SET nau_equipada = 0,
+              naus_comprades = '[true, false, false, false, false, false, false, false]'::jsonb
+        WHERE username = $1
+        RETURNING username`,
+      [username]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: "No s'ha trobat aquest jugador." });
+
+    for (const socket of io.sockets.sockets.values()) {
+      if (socket.data.username === username) {
+        socket.emit("admin_ships_reset", { username, nauEquipada: 0, nausComprades });
+      }
+    }
+
+    return res.json({ ok: true, username, nauEquipada: 0, nausComprades });
+  } catch (error) {
+    console.error("No s'han pogut reiniciar les naus del jugador:", error);
+    return res.status(500).json({ error: "No s'han pogut reiniciar les naus." });
+  }
+});
+
 app.post("/api/save-user", requireAuth, async (req, res) => {
   const body = req.body;
   if (!body || typeof body !== "object" || Array.isArray(body)) {
@@ -312,11 +345,11 @@ app.post("/api/shop/ship", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `UPDATE players
-          SET monedes = CASE WHEN naus_comprades->>$2 = 'true' THEN monedes ELSE monedes - $3 END,
-              naus_comprades = jsonb_set(naus_comprades, ARRAY[$2::text], 'true'::jsonb, true),
+          SET monedes = CASE WHEN naus_comprades ->> ($2::integer) = 'true' THEN monedes ELSE monedes - $3 END,
+              naus_comprades = jsonb_set(naus_comprades, ARRAY[($2::integer)::text], 'true'::jsonb, true),
               nau_equipada = $2
         WHERE username = $1
-          AND (naus_comprades->>$2 = 'true' OR monedes >= $3)
+          AND (naus_comprades ->> ($2::integer) = 'true' OR monedes >= $3)
         RETURNING username, record, monedes, nau_equipada, naus_comprades,
                   pong_duel_wins, pong_colores_comprados, pong_color_equipado`,
       [req.player.username, shipId, price]
